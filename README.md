@@ -13,13 +13,14 @@ Features of `pest_consume` include:
 Here is the [CSV example from the doc](https://pest.rs/book/examples/csv.html),
 using `pest_consume`.
 
-The pest grammar file contains:
+`grammar.pest`:
 ```rust
 field = { (ASCII_DIGIT | "." | "-")+ }
 record = { field ~ ("," ~ field)* }
 file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
 ```
 
+`main.rs`:
 ```rust
 use pest_consume::{match_nodes, Error, Parser};
 
@@ -41,10 +42,14 @@ impl CSVParser {
         input
             .as_str()
             .parse::<f64>()
+            // The error will point to the part of the input that caused it
             .map_err(|e| input.error(e.to_string()))
     }
     fn record(input: Node) -> Result<Vec<f64>> {
         Ok(match_nodes!(input.children();
+            // Checks that the children all match the rule `field`, and applies
+            // the appropriate parsing method. This is strongly typed: for example
+            // mixing up `record` and `field` would cause a type error.
             [field(fields)..] => fields.collect(),
         ))
     }

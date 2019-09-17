@@ -5,21 +5,23 @@
 //!
 //! Features of `pest_consume` include:
 //! - strong types;
-//! - consuming children uses an intuitive syntax;
-//! - error handling is well integrated.
+//! - consume parse nodes using an intuitive syntax;
+//! - easy error handling;
+//! - you won't ever need to use `Pair`s or `.into_inner().next().unwrap()` again.
 //!
 //! # Example
 //!
 //! Here is the [CSV example from the doc](https://pest.rs/book/examples/csv.html),
 //! using `pest_consume`.
 //!
-//! The pest grammar file contains:
+//! `grammar.pest`:
 //! ```text
 //! field = { (ASCII_DIGIT | "." | "-")+ }
 //! record = { field ~ ("," ~ field)* }
 //! file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
 //! ```
 //!
+//! `main.rs`:
 //! ```no_run
 //! use pest_consume::{match_nodes, Error, Parser};
 //!
@@ -41,10 +43,14 @@
 //!         input
 //!             .as_str()
 //!             .parse::<f64>()
+//!             // The error will point to the part of the input that caused it
 //!             .map_err(|e| input.error(e.to_string()))
 //!     }
 //!     fn record(input: Node) -> Result<Vec<f64>> {
 //!         Ok(match_nodes!(input.children();
+//!             // Checks that the children all match the rule `field`, and applies
+//!             // the appropriate parsing method. This is strongly typed: for example
+//!             // mixing up `record` and `field` would cause a type error.
 //!             [field(fields)..] => fields.collect(),
 //!         ))
 //!     }
