@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "pest_consume",
+    "pest_consume_macros",
+]
+
