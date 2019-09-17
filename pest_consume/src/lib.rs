@@ -1,15 +1,46 @@
 //! `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
-//! Given a grammar file, pest generates a parser that outputs an untyped parse tree. Then that
-//! parse tree needs to be transformed into whatever datastructures your application uses.
-//! `pest_consume` provides two macros to make this easy.
+//!
+//! # Motivation
+//!
+//! When using [pest] to write a parser, one has to traverse the resulting untyped parse tree
+//! by hand to extract the data that will be used by the rest of the application.
+//! This usually makes code that is error-prone, difficult to read, and often breaks when the grammar is updated.
+//!
+//! `pest_consume` strives to make this phase of parsing easier, cleaner, and more robust.
 //!
 //! Features of `pest_consume` include:
 //! - strong types;
 //! - consume parse nodes using an intuitive syntax;
 //! - easy error handling;
-//! - you won't ever need to use `Pair`s or `.into_inner().next().unwrap()` again.
+//! - you won't ever need to write `.into_inner().next().unwrap()` again.
 //!
-//! # Example
+//! # Implementing a parser
+//!
+//! Let's start with a pest grammar:
+//!
+//! `grammar.pest`:
+//! ```text
+//! field = { (ASCII_DIGIT | "." | "-")+ }
+//! record = { field ~ ("," ~ field)* }
+//! file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
+//! ```
+//!
+//! and a pest parser:
+//!
+//! ```skip
+//! // Construct the first half of the parser using pest as usual.
+//! #[derive(Parser)]
+//! #[grammar = "csv.pest"]
+//! struct CSVParser;
+//! ```
+//!
+//! TODO
+//! for the other half, we define an impl with attribute
+//! for each rule, a method; note the output type
+//!
+//!
+//!
+//! # Complete example
 //!
 //! Here is the [CSV example from the doc](https://pest.rs/book/examples/csv.html),
 //! using `pest_consume`.
@@ -22,7 +53,7 @@
 //! ```
 //!
 //! `main.rs`:
-//! ```no_run
+//! ```
 //! use pest_consume::{match_nodes, Error, Parser};
 //!
 //! type Result<T> = std::result::Result<T, Error<Rule>>;
@@ -68,15 +99,16 @@
 //!     ))
 //! }
 //!
-//! fn main() {
-//!     let parsed = parse_csv("-273.15, 12\n42, 0").unwrap();
+//! fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+//!     let parsed = parse_csv("-20, 12\n42, 0")?;
 //!     let mut sum = 0.;
 //!     for record in parsed {
 //!         for field in record {
 //!             sum += field;
 //!         }
 //!     }
-//!     println!("{}", sum);
+//!     assert_eq!(sum, 34.0);
+//!     Ok(())
 //! }
 //! ```
 //!
@@ -89,7 +121,7 @@
 //! # How it works
 //!
 //! The main types of this crate ([Node], [Nodes] and [Parser]) are mostly wrappers around
-//! the corresponding [pest] types.
+//! corresponding [pest] types.
 //!
 //! The `pest_consume::parser` macro does almost nothing when not using advanced features;
 //! most of the magic happens in `match_nodes`.
@@ -118,9 +150,36 @@
 //!
 //! TODO
 //!
+//! - user data
 //! - rule aliasing
 //! - rule shortcutting
-//! - user data
+//!
+//! # Compatibility
+//!
+//! Works with Rust >= 1.37.
+//!
+//! Needs Rust >= 1.37 because it uses
+//! [this feature](https://blog.rust-lang.org/2019/08/15/Rust-1.37.0.html#referring-to-enum-variants-through-type-aliases).
+//! If there is demand for older versions of Rust, we might be able to work around that.
+//!
+//! Works with older nightly Rust, with `#![feature(type_alias_enum_variants)]`.
+//!
+//! # License
+//!
+//! Licensed under either of
+//!
+//!  * Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+//!  * MIT license (http://opensource.org/licenses/MIT)
+//!
+//! at your option.
+//!
+//! # Contribution
+//!
+//! Unless you explicitly state otherwise, any contribution intentionally submitted
+//! for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+//! dual licensed as above, without any additional terms or conditions.
+//!
+//! [pest]: https://pest.rs
 
 pub use pest::error::Error;
 use pest::Parser as PestParser;
@@ -138,15 +197,15 @@ mod node {
     use pest::Parser as PestParser;
     use pest::{RuleType, Span};
 
-    /// Carries a pest Pair alongside custom user data.
-    #[derive(Debug, Clone)]
+    /// A node of the parse tree.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct Node<'input, Rule: RuleType, Data> {
         pair: Pair<'input, Rule>,
         user_data: Data,
     }
 
     /// Iterator over `Node`s. It is created by `Node::children` or `Nodes::new`.
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct Nodes<'input, Rule: RuleType, Data> {
         pairs: Pairs<'input, Rule>,
         span: Span<'input>,
@@ -157,14 +216,15 @@ mod node {
         pub fn new(pair: Pair<'i, R>, user_data: D) -> Self {
             Node { pair, user_data }
         }
-        /// Create an error that points to the span of the input.
+        /// Create an error that points to the span of the node.
         pub fn error(&self, message: String) -> Error<R> {
             Error::new_from_span(
                 ErrorVariant::CustomError { message },
                 self.as_span(),
             )
         }
-        /// Reconstruct the input with a new pair, passing the user data along.
+        #[doc(hidden)]
+        /// Construct a node with the provided pair, passing the user data along.
         pub fn with_pair(&self, new_pair: Pair<'i, R>) -> Self
         where
             D: Clone,
@@ -174,20 +234,21 @@ mod node {
                 user_data: self.user_data.clone(),
             }
         }
-        /// If the contained pair has exactly one child, return a new Self containing it.
+        #[doc(hidden)]
+        /// If the node has exactly one child, return that child; otherwise return None.
         pub fn single_child(&self) -> Option<Self>
         where
             D: Clone,
         {
-            let mut children = self.pair.clone().into_inner();
+            let mut children = self.children();
             if let Some(child) = children.next() {
                 if children.next().is_none() {
-                    return Some(self.with_pair(child));
+                    return Some(child);
                 }
             }
             None
         }
-        /// Return an iterator over the children of this input
+        /// Return an iterator over the children of this node
         // Can't use `-> impl Iterator` because of weird lifetime limitations
         // (see https://github.com/rust-lang/rust/issues/61997).
         pub fn children(&self) -> Nodes<'i, R, D>
@@ -197,15 +258,12 @@ mod node {
             Nodes {
                 pairs: self.as_pair().clone().into_inner(),
                 span: self.as_span(),
-                user_data: self.user_data(),
+                user_data: self.user_data.clone(),
             }
         }
 
-        pub fn user_data(&self) -> D
-        where
-            D: Clone,
-        {
-            self.user_data.clone()
+        pub fn user_data(&self) -> &D {
+            &self.user_data
         }
         pub fn as_pair(&self) -> &Pair<'i, R> {
             &self.pair
@@ -222,6 +280,7 @@ mod node {
         pub fn as_rule(&self) -> R {
             self.pair.as_rule()
         }
+        #[doc(hidden)]
         pub fn as_aliased_rule<C>(&self) -> C::AliasedRule
         where
             C: Parser<Rule = R>,
@@ -241,13 +300,14 @@ mod node {
                 user_data,
             }
         }
-        /// Create an error that points to the span of the input.
+        /// Create an error that points to the span of the node.
         pub fn error(&self, message: String) -> Error<R> {
             Error::new_from_span(
                 ErrorVariant::CustomError { message },
                 self.span.clone(),
             )
         }
+        #[doc(hidden)]
         pub fn aliased_rules<C>(&self) -> Vec<C::AliasedRule>
         where
             D: Clone,
@@ -256,12 +316,12 @@ mod node {
         {
             self.clone().map(|p| p.as_aliased_rule::<C>()).collect()
         }
-        /// Reconstruct the input with a new pair, passing the user data along.
-        fn with_pair(&self, new_pair: Pair<'i, R>) -> Node<'i, R, D>
+        /// Construct a node with the provided pair, passing the user data along.
+        fn with_pair(&self, pair: Pair<'i, R>) -> Node<'i, R, D>
         where
             D: Clone,
         {
-            Node::new(new_pair, self.user_data.clone())
+            Node::new(pair, self.user_data.clone())
         }
 
         pub fn as_pairs(&self) -> &Pairs<'i, R> {
@@ -295,6 +355,18 @@ mod node {
             let child_pair = self.pairs.next_back()?;
             let child = self.with_pair(child_pair);
             Some(child)
+        }
+    }
+
+    impl<'i, R: RuleType, D> std::fmt::Display for Node<'i, R, D> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            self.pair.fmt(f)
+        }
+    }
+
+    impl<'i, R: RuleType, D> std::fmt::Display for Nodes<'i, R, D> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            self.pairs.fmt(f)
         }
     }
 }

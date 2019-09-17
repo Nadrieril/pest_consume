@@ -195,17 +195,21 @@ fn parse_fn<'a>(
         )
     })?;
     let input_arg = match &input_arg {
-        FnArg::Receiver(_) => return Err(Error::new(
-            input_arg.span(),
-            "a rule function should not have a `self` argument",
-        )),
-        FnArg::Typed(input_arg) => match &*input_arg.pat{
-            Pat::Ident(ident) => ident.ident.clone(),
-            _ => return Err(Error::new(
+        FnArg::Receiver(_) => {
+            return Err(Error::new(
                 input_arg.span(),
-                "this argument should be a plain identifier instead of a pattern",
-            )),
+                "a rule function should not have a `self` argument",
+            ))
         }
+        FnArg::Typed(input_arg) => match &*input_arg.pat {
+            Pat::Ident(ident) => ident.ident.clone(),
+            _ => {
+                return Err(Error::new(
+                    input_arg.span(),
+                    "this argument should be a plain identifier instead of a pattern",
+                ))
+            }
+        },
     };
 
     let alias_srcs = alias_map.remove(&fn_name).unwrap_or_else(Vec::new);

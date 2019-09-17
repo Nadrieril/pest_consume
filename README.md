@@ -1,20 +1,54 @@
-# `pest_consume`
+# pest_consume
 
 `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
+
+## Motivation
+
+When using [pest] to write a parser, one has to traverse the resulting untyped parse tree
+by hand to extract the data that will be used by the rest of the application.
+This usually makes code that is error-prone, difficult to read, and often breaks when the grammar is updated.
+
+`pest_consume` strives to make this phase of parsing easier, cleaner, and more robust.
 
 Features of `pest_consume` include:
 - strong types;
 - consume parse nodes using an intuitive syntax;
 - easy error handling;
-- you won't ever need to use `Pair`s or `.into_inner().next().unwrap()` again.
+- you won't ever need to write `.into_inner().next().unwrap()` again.
 
-# Example
+## Implementing a parser
+
+Let's start with a pest grammar:
+
+`grammar.pest`:
+```
+field = { (ASCII_DIGIT | "." | "-")+ }
+record = { field ~ ("," ~ field)* }
+file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
+```
+
+and a pest parser:
+
+```skip
+// Construct the first half of the parser using pest as usual.
+#[derive(Parser)]
+#[grammar = "csv.pest"]
+struct CSVParser;
+```
+
+TODO
+for the other half, we define an impl with attribute
+for each rule, a method; note the output type
+
+
+
+## Complete example
 
 Here is the [CSV example from the doc](https://pest.rs/book/examples/csv.html),
 using `pest_consume`.
 
 `grammar.pest`:
-```rust
+```
 field = { (ASCII_DIGIT | "." | "-")+ }
 record = { field ~ ("," ~ field)* }
 file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
@@ -67,17 +101,60 @@ fn parse_csv(input_str: &str) -> Result<Vec<Vec<f64>>> {
     ))
 }
 
-fn main() {
-    let parsed = parse_csv("-273.15, 12\n42, 0").unwrap();
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse_csv("-20, 12\n42, 0")?;
     let mut sum = 0.;
     for record in parsed {
         for field in record {
             sum += field;
         }
     }
-    println!("{}", sum);
+    assert_eq!(sum, 34.0);
+    Ok(())
 }
 ```
+
+There are several things to note:
+- we use two macros provided by `pest_consume`: `parser` and `match_nodes`;
+- there is one `fn` item per (non-silent) rule in the grammar;
+- we associate an output type to every rule;
+- there is no need to fiddle with `.into_inner()`, `.next()` or `.unwrap()`, as is common when using pest
+
+## How it works
+
+The main types of this crate ([Node], [Nodes] and [Parser]) are mostly wrappers around
+corresponding [pest] types.
+
+The `pest_consume::parser` macro does almost nothing when not using advanced features;
+most of the magic happens in `match_nodes`.
+`match_nodes` desugars rather straightforwardly into calls to the `fn` items corresponding to
+the rules matched on.
+For example:
+```rust
+match_nodes!(input.children();
+    [field(fields)..] => fields.collect(),
+)
+```
+desugars into:
+```rust
+let nodes = { input.children() };
+if ... { // check that all rules in `nodes` are the `field` rule
+    let fields = nodes
+        .map(|node| Self::field(node)) // Recursively parse children nodes
+        ... // Propagate errors
+    { fields.collect() }
+} else {
+    ... // error because we got unexpected rules
+}
+```
+
+## Advanced features
+
+TODO
+
+- user data
+- rule aliasing
+- rule shortcutting
 
 ## Compatibility
 
@@ -105,3 +182,5 @@ for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
 [pest]: https://pest.rs
+
+License: MIT OR Apache-2.0
