@@ -26,20 +26,25 @@ record = { field ~ ("," ~ field)* }
 file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
 ```
 
-and a pest parser:
+and the corresponding pest parser:
 
 ```rust
+use pest_consume::Parser;
 // Construct the first half of the parser using pest as usual.
 #[derive(Parser)]
 #[grammar = "../examples/csv/csv.pest"]
 struct CSVParser;
 ```
 
-To complete the parser, define and `impl` block with the `pest_consume::parser` attribute,
+To complete the parser, define an `impl` block with the `pest_consume::parser` attribute,
 and for each (non-silent) rule of the grammar a method with the same name.
-Note that we chose an output type for each rule.
+Note how we chose an output type for each rule.
 
 ```rust
+use pest_consume::Error;
+type Result<T> = std::result::Result<T, Error<Rule>>;
+type Node<'i> = pest_consume::Node<'i, Rule, ()>;
+
 // This is the other half of the parser, using pest_consume.
 #[pest_consume::parser]
 impl CSVParser {
@@ -65,21 +70,18 @@ fn parse_csv(input_str: &str) -> Result<Vec<Vec<f64>>> {
     // Parse the input into `Nodes`
     let inputs = CSVParser::parse(Rule::file, input_str)?;
     // There should be a single root node in the parsed tree
-    let input = inputs
-        .clone()
-        .single()
-        .ok_or_else(|| inputs.error("Expected a single `file` node"))?;
+    let input = inputs.single()?;
     // Consume the `Node` recursively into the final value
     CSVParser::file(input)
 }
 ```
 
 It only remains to implement parsing for each rule.
-The simple case is when the rule has no children.
-In this case, we usually care about the captured string, accessible using [`Node::as_str`].
+The simple cases are when the rule has no children.
+In this case, we usually only care about the captured string, accessible using [`Node::as_str`].
 ```rust
     fn field(input: Node) -> Result<f64> {
-        // Get the string captured by the node
+        // Get the string captured by this node
         input.as_str()
             // Convert it into the type we want
             .parse::<f64>()
@@ -96,10 +98,12 @@ a `match` expression.
 
 We specify for each branch the expected rules of the children, and the macro will recursively consume the
 children and make the result accessible to the body of the branch.
-A special `..` syntax indicates a variable-length pattern.
-It will match zero or more children with the given rule, and provide an iterator with the result.
+A special `..` syntax indicates a variable-length pattern:
+it will match zero or more children with the given rule, and provide an iterator with the result.
 
 ```rust
+use pest_consume::match_nodes;
+...
     fn record(input: Node) -> Result<Vec<f64>> {
         // Checks that the children all match the rule `field`, and captures
         // the parsed children in an iterator. `fds` implements
@@ -112,7 +116,7 @@ It will match zero or more children with the given rule, and provide an iterator
 
 The case of the `file` rule is similar.
 
-## Complete example
+## Examples
 
 Some toy examples can be found in [the `examples/` directory][examples].
 A real-world example can be found in [dhall-rust][dhall-rust-parser].
@@ -153,8 +157,10 @@ if ... { // check that all rules in `nodes` are the `field` rule
 TODO
 
 - user data
+- precedence climbing
 - rule aliasing
 - rule shortcutting
+- match_nodes outside of a parser impl
 
 ## Compatibility
 
