@@ -235,7 +235,7 @@ pub fn match_nodes(
     Ok(quote!({
         #[allow(unused_mut)]
         let mut #i_nodes = #input_expr;
-        let #i_node_rules = #i_nodes.aliased_rules::<#parser>();
+        let #i_node_rules: std::vec::Vec<_> = #i_nodes.aliased_rules::<#parser>().collect();
 
         #[allow(unreachable_code)]
         match () {

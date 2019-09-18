@@ -290,7 +290,8 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
             // While the current rule allows shortcutting, and there is a single child, and the
             // child can still be parsed by the current function, then skip to that child.
             while #self_ty::allows_shortcut(#input_arg.as_rule()) {
-                if let ::std::option::Option::Some(child) = #input_arg.single_child() {
+                if let ::std::option::Option::Some(child)
+                        = #input_arg.children().single() {
                     if child.as_aliased_rule::<Self>() == #self_ty::AliasedRule::#fn_name {
                         #input_arg = child;
                         continue;
