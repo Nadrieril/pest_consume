@@ -1,3 +1,5 @@
+#![doc(html_root_url = "https://docs.rs/pest_consume/1.0.0")]
+
 //! `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
 //!
 //! # Motivation
