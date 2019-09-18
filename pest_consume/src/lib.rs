@@ -24,10 +24,10 @@
 //! file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
 //! ```
 //!
-//! and a pest parser:
+//! and the corresponding pest parser:
 //!
 //! ```no_run
-//! # use pest_consume::Parser;
+//! use pest_consume::Parser;
 //! // Construct the first half of the parser using pest as usual.
 //! #[derive(Parser)]
 //! #[grammar = "../examples/csv/csv.pest"]
@@ -35,11 +35,15 @@
 //! # fn main() {}
 //! ```
 //!
-//! To complete the parser, define and `impl` block with the `pest_consume::parser` attribute,
+//! To complete the parser, define an `impl` block with the `pest_consume::parser` attribute,
 //! and for each (non-silent) rule of the grammar a method with the same name.
-//! Note that we chose an output type for each rule.
+//! Note how we chose an output type for each rule.
 //!
 //! ```ignore
+//! use pest_consume::Error;
+//! type Result<T> = std::result::Result<T, Error<Rule>>;
+//! type Node<'i> = pest_consume::Node<'i, Rule, ()>;
+//!
 //! // This is the other half of the parser, using pest_consume.
 //! #[pest_consume::parser]
 //! impl CSVParser {
@@ -65,21 +69,18 @@
 //!     // Parse the input into `Nodes`
 //!     let inputs = CSVParser::parse(Rule::file, input_str)?;
 //!     // There should be a single root node in the parsed tree
-//!     let input = inputs
-//!         .clone()
-//!         .single()
-//!         .ok_or_else(|| inputs.error("Expected a single `file` node"))?;
+//!     let input = inputs.single()?;
 //!     // Consume the `Node` recursively into the final value
 //!     CSVParser::file(input)
 //! }
 //! ```
 //!
 //! It only remains to implement parsing for each rule.
-//! The simple case is when the rule has no children.
-//! In this case, we usually care about the captured string, accessible using [`Node::as_str`].
+//! The simple cases are when the rule has no children.
+//! In this case, we usually only care about the captured string, accessible using [`Node::as_str`].
 //! ```ignore
 //!     fn field(input: Node) -> Result<f64> {
-//!         // Get the string captured by the node
+//!         // Get the string captured by this node
 //!         input.as_str()
 //!             // Convert it into the type we want
 //!             .parse::<f64>()
@@ -96,10 +97,12 @@
 //!
 //! We specify for each branch the expected rules of the children, and the macro will recursively consume the
 //! children and make the result accessible to the body of the branch.
-//! A special `..` syntax indicates a variable-length pattern.
-//! It will match zero or more children with the given rule, and provide an iterator with the result.
+//! A special `..` syntax indicates a variable-length pattern:
+//! it will match zero or more children with the given rule, and provide an iterator with the result.
 //!
 //! ```ignore
+//! use pest_consume::match_nodes;
+//! ...
 //!     fn record(input: Node) -> Result<Vec<f64>> {
 //!         // Checks that the children all match the rule `field`, and captures
 //!         // the parsed children in an iterator. `fds` implements
@@ -112,7 +115,7 @@
 //!
 //! The case of the `file` rule is similar.
 //!
-//! # Complete example
+//! # Examples
 //!
 //! Some toy examples can be found in [the `examples/` directory][examples].
 //! A real-world example can be found in [dhall-rust][dhall-rust-parser].
@@ -153,8 +156,10 @@
 //! TODO
 //!
 //! - user data
+//! - precedence climbing
 //! - rule aliasing
 //! - rule shortcutting
+//! - match_nodes outside of a parser impl
 //!
 //! # Compatibility
 //!
@@ -252,6 +257,7 @@ mod node {
     }
 
     impl<'i, R: RuleType> Node<'i, R, ()> {
+        #[doc(hidden)]
         pub fn new(pair: Pair<'i, R>) -> Self {
             Node {
                 pair,
@@ -260,29 +266,28 @@ mod node {
         }
     }
     impl<'i, R: RuleType, D> Node<'i, R, D> {
+        #[doc(hidden)]
         pub fn new_with_user_data(pair: Pair<'i, R>, user_data: D) -> Self {
             Node { pair, user_data }
         }
-        /// Create an error that points to the span of the node.
-        pub fn error<S: ToString>(&self, message: S) -> Error<R> {
-            Error::new_from_span(
-                ErrorVariant::CustomError {
-                    message: message.to_string(),
-                },
-                self.as_span(),
-            )
+        pub fn as_str(&self) -> &'i str {
+            self.pair.as_str()
         }
-        /// Construct a node with the provided pair, passing the user data along.
+        pub fn as_span(&self) -> Span<'i> {
+            self.pair.as_span()
+        }
+        pub fn as_rule(&self) -> R {
+            self.pair.as_rule()
+        }
         #[doc(hidden)]
-        pub fn with_pair(&self, new_pair: Pair<'i, R>) -> Self
+        pub fn as_aliased_rule<C>(&self) -> C::AliasedRule
         where
-            D: Clone,
+            C: Parser<Rule = R>,
+            <C as Parser>::Parser: PestParser<R>,
         {
-            Node {
-                pair: new_pair,
-                user_data: self.user_data.clone(),
-            }
+            C::rule_alias(self.as_rule())
         }
+
         /// Returns an iterator over the children of this node
         pub fn into_children(self) -> Nodes<'i, R, D> {
             let span = self.as_span();
@@ -300,6 +305,16 @@ mod node {
             self.clone().into_children()
         }
 
+        /// Create an error that points to the span of the node.
+        pub fn error<S: ToString>(&self, message: S) -> Error<R> {
+            Error::new_from_span(
+                ErrorVariant::CustomError {
+                    message: message.to_string(),
+                },
+                self.as_span(),
+            )
+        }
+
         pub fn user_data(&self) -> &D {
             &self.user_data
         }
@@ -311,23 +326,6 @@ mod node {
         }
         pub fn into_pair(self) -> Pair<'i, R> {
             self.pair
-        }
-        pub fn as_span(&self) -> Span<'i> {
-            self.pair.as_span()
-        }
-        pub fn as_str(&self) -> &'i str {
-            self.pair.as_str()
-        }
-        pub fn as_rule(&self) -> R {
-            self.pair.as_rule()
-        }
-        #[doc(hidden)]
-        pub fn as_aliased_rule<C>(&self) -> C::AliasedRule
-        where
-            C: Parser<Rule = R>,
-            <C as Parser>::Parser: PestParser<R>,
-        {
-            C::rule_alias(self.as_rule())
         }
     }
 
@@ -346,7 +344,8 @@ mod node {
                 user_data,
             }
         }
-        /// Create an error that points to the span of the node.
+        /// Create an error that points to the initial span of the nodes.
+        /// Note that this span does not change as the iterator is consumed.
         pub fn error<S: ToString>(&self, message: S) -> Error<R> {
             Error::new_from_span(
                 ErrorVariant::CustomError {
@@ -356,16 +355,30 @@ mod node {
             )
         }
         /// Returns the only element if there is only one element.
-        pub fn single(mut self) -> Option<Node<'i, R, D>>
-        where
-            D: Clone,
-        {
-            if let Some(node) = self.next() {
-                if self.next().is_none() {
-                    return Some(node);
+        pub fn single(mut self) -> Result<Node<'i, R, D>, Error<R>> {
+            match (self.pairs.next(), self.pairs.next()) {
+                (Some(pair), None) => {
+                    Ok(Node::new_with_user_data(pair, self.user_data))
+                }
+                (first, second) => {
+                    let node_rules: Vec<_> = first
+                        .into_iter()
+                        .chain(second)
+                        .chain(self.pairs)
+                        .map(|p| p.as_rule())
+                        .collect();
+
+                    Err(Error::new_from_span(
+                        ErrorVariant::CustomError {
+                            message: format!(
+                                "Expected a single node, instead got: {:?}",
+                                node_rules
+                            ),
+                        },
+                        self.span,
+                    ))
                 }
             }
-            None
         }
         #[doc(hidden)]
         pub fn aliased_rules<C>(

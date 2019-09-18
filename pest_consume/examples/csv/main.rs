@@ -54,10 +54,12 @@ impl CSVParser {
 }
 
 fn parse_csv(input_str: &str) -> Result<CSVFile> {
+    // Parse the input into `Nodes`
     let inputs = CSVParser::parse(Rule::file, input_str)?;
-    Ok(match_nodes!(<CSVParser>; inputs;
-        [file(e)] => e,
-    ))
+    // There should be a single root node in the parsed tree
+    let input = inputs.single()?;
+    // Consume the `Node` recursively into the final value
+    CSVParser::file(input)
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
