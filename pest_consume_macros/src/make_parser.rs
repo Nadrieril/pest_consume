@@ -182,27 +182,16 @@ fn collect_aliases(
     Ok(alias_map)
 }
 
-fn parse_fn<'a>(
-    function: &'a mut ImplItemMethod,
-    alias_map: &mut HashMap<Ident, Vec<AliasSrc>>,
-) -> Result<ParsedFn<'a>> {
-    let fn_name = function.sig.ident.clone();
-    // Get the name of the first (`input`) function argument
-    let input_arg = function.sig.inputs.first().ok_or_else(|| {
-        Error::new(
-            function.sig.inputs.span(),
-            "a rule function needs an `input` argument",
-        )
-    })?;
-    let input_arg = match &input_arg {
+fn extract_ident_argument(input_arg: &FnArg) -> Result<Ident> {
+    match input_arg {
         FnArg::Receiver(_) => {
             return Err(Error::new(
                 input_arg.span(),
-                "a rule function should not have a `self` argument",
+                "this argument should not be `self`",
             ))
         }
         FnArg::Typed(input_arg) => match &*input_arg.pat {
-            Pat::Ident(ident) => ident.ident.clone(),
+            Pat::Ident(pat) => Ok(pat.ident.clone()),
             _ => {
                 return Err(Error::new(
                     input_arg.span(),
@@ -210,8 +199,23 @@ fn parse_fn<'a>(
                 ))
             }
         },
-    };
+    }
+}
 
+fn parse_fn<'a>(
+    function: &'a mut ImplItemMethod,
+    alias_map: &mut HashMap<Ident, Vec<AliasSrc>>,
+) -> Result<ParsedFn<'a>> {
+    if function.sig.inputs.len() != 1 {
+        return Err(Error::new(
+            function.sig.inputs.span(),
+            "A rule method must have 1 argument",
+        ));
+    }
+
+    let fn_name = function.sig.ident.clone();
+    // Get the name of the first function argument
+    let input_arg = extract_ident_argument(&function.sig.inputs[0])?;
     let alias_srcs = alias_map.remove(&fn_name).unwrap_or_else(Vec::new);
 
     Ok(ParsedFn {
@@ -222,58 +226,64 @@ fn parse_fn<'a>(
     })
 }
 
-fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
-    let function = &mut *f.function;
-    let fn_name = &f.fn_name;
-    let input_arg = &f.input_arg;
-
-    *function = parse_quote!(
-        #[allow(non_snake_case)]
-        #function
-    );
-
-    // `prec_climb` attr
-    let prec_climb_attrs: Vec<_> = function
+fn apply_prec_climb_attr(function: &mut ImplItemMethod) -> Result<()> {
+    // `prec_climb` attrs
+    let mut prec_climb_attrs: Vec<_> = function
         .attrs
         .partition_filter(|attr| attr.path.is_ident("prec_climb"));
 
-    if prec_climb_attrs.len() > 1 {
+    if prec_climb_attrs.is_empty() {
+        return Ok(()); // do nothing
+    } else if prec_climb_attrs.len() > 1 {
         return Err(Error::new(
             prec_climb_attrs[1].span(),
             "expected at most one prec_climb attribute",
         ));
-    } else if prec_climb_attrs.is_empty() {
-        // do nothing
-    } else {
-        let attr = prec_climb_attrs.into_iter().next().unwrap();
-        let PrecClimbArgs {
-            child_rule,
-            climber,
-        } = attr.parse_args()?;
+    }
 
-        function.block = parse_quote!({
+    let attr = prec_climb_attrs.pop().unwrap();
+    let args = attr.parse_args()?;
+    let PrecClimbArgs {
+        child_rule,
+        climber,
+    } = args;
+
+    if function.sig.inputs.len() != 3 {
+        return Err(Error::new(
+            function.sig.inputs.span(),
+            "A prec_climb method must have 3 arguments",
+        ));
+    }
+
+    // Create a new function that only has the middle argument of the original one.
+    // It should have type Node and that way all the generic bits should work fine.
+    let mut new_sig = function.sig.clone();
+    let arg = &new_sig.inputs[1];
+    let arg_name = extract_ident_argument(arg)?;
+    new_sig.inputs = std::iter::once(arg.clone()).collect();
+
+    let fn_name = &function.sig.ident;
+    *function = parse_quote!(
+        #new_sig {
             #function
 
-            #climber.climb(
-                #input_arg.as_pair().clone().into_inner(),
-                |p| Self::#child_rule(#input_arg.with_pair(p)),
-                |l, op, r| {
-                    #fn_name(#input_arg.clone(), l?, op, r?)
-                },
-            )
-        });
-        // Remove the 3 last arguments to keep only the `input` one
-        function.sig.inputs.pop();
-        function.sig.inputs.pop();
-        function.sig.inputs.pop();
-        // Check that an argument remains
-        function.sig.inputs.first().ok_or_else(|| {
-            Error::new(
-                function.sig.inputs.span(),
-                "a prec_climb function needs 4 arguments",
-            )
-        })?;
-    }
+            #arg_name
+                .into_children()
+                .prec_climb(
+                    &*#climber,
+                    Self::#child_rule,
+                    #fn_name,
+                )
+        }
+    );
+
+    Ok(())
+}
+
+fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
+    let function = &mut *f.function;
+    let fn_name = &f.fn_name;
+    let input_arg = &f.input_arg;
 
     // `alias` attr
     // f.alias_srcs has always at least 1 element because it has an entry pointing from itself.
@@ -355,6 +365,11 @@ pub fn make_parser(
             _ => None,
         })
         .map(|method| {
+            *method = parse_quote!(
+                #[allow(non_snake_case)]
+                #method
+            );
+            apply_prec_climb_attr(method)?;
             let mut f = parse_fn(method, &mut alias_map)?;
             apply_special_attrs(&mut f, &rule_enum)?;
             Ok((f.fn_name.clone(), f))
