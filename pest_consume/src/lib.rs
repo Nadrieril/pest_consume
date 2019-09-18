@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/pest_consume/1.0.0")]
+#![doc(html_root_url = "https://docs.rs/pest_consume/1.0.1")]
 
 //! `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
 //!
@@ -188,7 +188,7 @@
 //! for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 //! dual licensed as above, without any additional terms or conditions.
 //!
-//! [`parser`]: https://docs.rs/pest_consume_macros/1.0.0/pest_consume_macros/attr.parser.html
+//! [`parser`]: https://docs.rs/pest_consume_macros/1.0.1/pest_consume_macros/attr.parser.html
 //! [`match_nodes`]: macro.match_nodes.html
 //! [`Nodes`]: struct.Nodes.html
 //! [`Node`]: struct.Node.html
@@ -475,7 +475,7 @@ pub use node::{Node, Nodes};
 /// A trait that provides methods to parse strings.
 /// Do not implement manually; instead use the [`parser`] macro provided by this crate.
 ///
-/// [`parser`]: https://docs.rs/pest_consume_macros/1.0.0/pest_consume_macros/attr.parser.html
+/// [`parser`]: https://docs.rs/pest_consume_macros/1.0.1/pest_consume_macros/attr.parser.html
 pub trait Parser {
     type Rule: RuleType;
     #[doc(hidden)]
