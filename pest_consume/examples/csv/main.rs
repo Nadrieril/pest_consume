@@ -26,7 +26,7 @@ impl CSVParser {
             .as_str()
             .parse::<f64>()
             // `input.error` links the error to the location in the input file where it occurred.
-            .map_err(|e| input.error(e.to_string()))
+            .map_err(|e| input.error(e))
     }
 
     fn string(input: Node) -> Result<&str> {
@@ -34,20 +34,20 @@ impl CSVParser {
     }
 
     fn field(input: Node) -> Result<CSVField> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [number(n)] => CSVField::Number(n),
             [string(s)] => CSVField::String(s),
         ))
     }
 
     fn record(input: Node) -> Result<CSVRecord> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [field(fields)..] => fields.collect(),
         ))
     }
 
     fn file(input: Node) -> Result<CSVFile> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [record(records).., EOI(_)] => records.collect(),
         ))
     }
@@ -60,10 +60,23 @@ fn parse_csv(input_str: &str) -> Result<CSVFile> {
     ))
 }
 
-fn main() {
-    let successful_parse = parse_csv("-273.15, ' a string '\n\n42, 0");
-    println!("success: {:?}", successful_parse.unwrap());
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse_csv("-20, 12.5\n42, 0")?;
+    let mut sum = 0.;
+    for record in parsed {
+        for field in record {
+            if let CSVField::Number(x) = field {
+                sum += x;
+            }
+        }
+    }
+    assert_eq!(sum, 34.5);
 
-    let unsuccessful_parse = parse_csv("0, 273.15.12");
+    let successful_parse = parse_csv("-273.15, ' a string '\n\n42, 0")?;
+    println!("success: {:?}", successful_parse);
+
+    let unsuccessful_parse = parse_csv("0, 273.1.1");
     println!("failure: {}", unsuccessful_parse.unwrap_err());
+
+    Ok(())
 }

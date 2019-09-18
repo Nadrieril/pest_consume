@@ -37,6 +37,7 @@
 //!
 //! To complete the parser, define and `impl` block with the `pest_consume::parser` attribute,
 //! and for each (non-silent) rule of the grammar a method with the same name.
+//! Note that we chose an output type for each rule.
 //!
 //! ```ignore
 //! // This is the other half of the parser, using pest_consume.
@@ -58,13 +59,12 @@
 //! ```
 //!
 //! This will implement [`Parser`] for your type, so that [`Parser::parse`] can be called on it.
-//!
 //! We can now define a complete parser that returns a structured result:
 //! ```ignore
 //! fn parse_csv(input_str: &str) -> Result<Vec<Vec<f64>>> {
 //!     // Parse the input into `Nodes`
 //!     let inputs = CSVParser::parse(Rule::file, input_str)?;
-//!     // Extract the single node matched or throw an error
+//!     // There should be a single root node in the parsed tree
 //!     let input = inputs
 //!         .clone()
 //!         .single()
@@ -74,95 +74,54 @@
 //! }
 //! ```
 //!
-//! TODO
+//! It only remains to implement parsing for each rule.
+//! The simple case is when the rule has no children.
+//! In this case, we usually care about the captured string, accessible using [`Node::as_str`].
+//! ```ignore
+//!     fn field(input: Node) -> Result<f64> {
+//!         // Get the string captured by the node
+//!         input.as_str()
+//!             // Convert it into the type we want
+//!             .parse::<f64>()
+//!             // In case of  an error, we use `Node::error` to link the error
+//!             // with the part of the input that caused it
+//!             .map_err(|e| input.error(e))
+//!     }
+//! ```
 //!
-//! - for the other half, we define an impl with attribute
-//! - for each rule, a method; note the output type
+//! When the rule has children, the [`match_nodes`] macro provides a
+//! typed way to parse the children.
+//! [`match_nodes`] uses a syntax similar to slice patterns, and allows for several branches like in
+//! a `match` expression.
 //!
+//! We specify for each branch the expected rules of the children, and the macro will recursively consume the
+//! children and make the result accessible to the body of the branch.
+//! A special `..` syntax indicates a variable-length pattern.
+//! It will match zero or more children with the given rule, and provide an iterator with the result.
 //!
+//! ```ignore
+//!     fn record(input: Node) -> Result<Vec<f64>> {
+//!         // Checks that the children all match the rule `field`, and captures
+//!         // the parsed children in an iterator. `fds` implements
+//!         // `Iterator<Item=f64>` here.
+//!         Ok(match_nodes!(input.into_children();
+//!             [field(fds)..] => fds.collect(),
+//!         ))
+//!     }
+//! ```
+//!
+//! The case of the `file` rule is similar.
 //!
 //! # Complete example
 //!
-//! Here is the [CSV example from the doc](https://pest.rs/book/examples/csv.html),
-//! using `pest_consume`.
-//!
-//! `grammar.pest`:
-//! ```text
-//! field = { (ASCII_DIGIT | "." | "-")+ }
-//! record = { field ~ ("," ~ field)* }
-//! file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
-//! ```
-//!
-//! `main.rs`:
-//! ```
-//! use pest_consume::{match_nodes, Error, Parser};
-//!
-//! type Result<T> = std::result::Result<T, Error<Rule>>;
-//! type Node<'i> = pest_consume::Node<'i, Rule, ()>;
-//!
-//! // Construct the first half of the parser using pest as usual.
-//! #[derive(Parser)]
-//! #[grammar = "../examples/csv/csv.pest"]
-//! struct CSVParser;
-//!
-//! // This is the other half of the parser, using pest_consume.
-//! #[pest_consume::parser]
-//! impl CSVParser {
-//!     fn EOI(_input: Node) -> Result<()> {
-//!         Ok(())
-//!     }
-//!     fn field(input: Node) -> Result<f64> {
-//!         input
-//!             .as_str()
-//!             .parse::<f64>()
-//!             // The error will point to the part of the input that caused it
-//!             .map_err(|e| input.error(e))
-//!     }
-//!     fn record(input: Node) -> Result<Vec<f64>> {
-//!         Ok(match_nodes!(input.children();
-//!             // Checks that the children all match the rule `field`, and applies
-//!             // the appropriate parsing method. This is strongly typed: for example
-//!             // mixing up `record` and `field` would cause a type error.
-//!             [field(fields)..] => fields.collect(),
-//!         ))
-//!     }
-//!     fn file(input: Node) -> Result<Vec<Vec<f64>>> {
-//!         Ok(match_nodes!(input.children();
-//!             [record(records).., EOI(_)] => records.collect(),
-//!         ))
-//!     }
-//! }
-//!
-//! fn parse_csv(input_str: &str) -> Result<Vec<Vec<f64>>> {
-//!     // Parse the input into `Nodes`
-//!     let inputs = CSVParser::parse(Rule::file, input_str)?;
-//!     // Extract the single node matched or throw an error
-//!     let input = inputs
-//!         .clone()
-//!         .single()
-//!         .ok_or_else(|| inputs.error("Expected a single `file` node"))?;
-//!     // Consume the `Node` recursively into the final value
-//!     CSVParser::file(input)
-//! }
-//!
-//! fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-//!     let parsed = parse_csv("-20, 12.5\n42, 0")?;
-//!     let mut sum = 0.;
-//!     for record in parsed {
-//!         for field in record {
-//!             sum += field;
-//!         }
-//!     }
-//!     assert_eq!(sum, 34.5);
-//!     Ok(())
-//! }
-//! ```
+//! Some toy examples can be found in [the `examples/` directory][examples].
+//! A real-world example can be found in [dhall-rust][dhall-rust-parser].
 //!
 //! # How it works
 //!
 //! The main types of this crate ([`Node`], [`Nodes`] and [`Parser`]) are mostly wrappers around
 //! corresponding [pest] types, respectively `Pair`, `Pairs` and `Parser`.
-//! If needed, the underlying [pest] type can be retrieved, but that should rarely be necessary.
+//! If needed, the wrapped type can be accessed, but that should rarely be necessary.
 //!
 //! The [`pest_consume::parser`][`parser`] macro implements the [`Parser`] trait for your type, and enables
 //! some advanced features, in particular rule aliasing.
@@ -172,13 +131,13 @@
 //! the rules matched on.
 //! For example:
 //! ```ignore
-//! match_nodes!(input.children();
+//! match_nodes!(input.into_children();
 //!     [field(fields)..] => fields.collect(),
 //! )
 //! ```
 //! desugars roughly into:
 //! ```ignore
-//! let nodes = { input.children() };
+//! let nodes = { input.into_children() };
 //! if ... { // check that all rules in `nodes` are the `field` rule
 //!     let fields = nodes
 //!         .map(|node| Self::field(node)) // Recursively parse children nodes
@@ -226,9 +185,13 @@
 //! [`match_nodes`]: macro.match_nodes.html
 //! [`Nodes`]: struct.Nodes.html
 //! [`Node`]: struct.Node.html
+//! [`Node::as_str`]: struct.Node.html#method.as_str
+//! [`Node::error`]: struct.Node.html#method.as_error
 //! [`Parser`]: trait.Parser.html
 //! [`Parser::parse`]: trait.Parser.html#method.parse
 //! [pest]: https://pest.rs
+//! [examples]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples
+//! [dhall-rust-parser]: https://github.com/Nadrieril/dhall-rust/blob/master/dhall_syntax/src/parser.rs
 
 pub use pest::error::Error;
 use pest::Parser as PestParser;
@@ -239,11 +202,18 @@ pub use pest_derive::Parser;
 /// Pattern-match on [`Nodes`] with familiar syntax and strong types..
 ///
 /// See [examples] and [crate-level documentation][`pest_consume`] for usage.
+///
+/// The macro takes an expression followed by `;`, followed by one or more branches separated by `,`.
+/// Each branch has the form `[$patterns] => $body`. The body is an arbitrary expression.
+///
+/// TODO: patterns
+///
+/// Example usage:
 /// ```ignore
 /// let nodes: Nodes<_, _> = ...:
 /// match_nodes!(nodes;
-///     [string(s)] => s.len(),
-///     [field(fs)..] => fs.filter(|f| f > 0).count(),
+///     [string(s), number(n)] => s.len() + n,
+///     [ignored(_), field(fs)..] => fs.filter(|f| f > 0).count(),
 /// )
 /// ```
 ///
