@@ -167,19 +167,11 @@
 //! [`Nodes`]: struct.Nodes.html
 //! [`Node`]: struct.Node.html
 //! [`Node::as_str`]: struct.Node.html#method.as_str
-//! [`Node::error`]: struct.Node.html#method.as_error
-//! [`Node::user_data`]: struct.Node.html#method.user_data
 //! [`Parser`]: trait.Parser.html
 //! [`Parser::parse`]: trait.Parser.html#method.parse
-//! [`Parser::parse_with_userdata`]: trait.Parser.html#method.parse_with_userdata
-//! [`Cell`]: https://doc.rust-lang.org/std/cell/struct.Cell.html
-//! [`RefCell`]: https://doc.rust-lang.org/std/cell/struct.RefCell.html
 //! [pest]: https://pest.rs
-//! [`PrecClimber`]: https://docs.rs/pest/2.1.2/pest/prec_climber/struct.PrecClimber.html
-//! [`lazy_static`]: https://crates.io/crates/lazy_static
 //! [examples]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples
-//! [prec_climbing-example]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples/prec_climbing
-//! [dhall-rust-parser]: https://github.com/Nadrieril/dhall-rust/blob/master/dhall_syntax/src/parser.rs
+//! [dhall-rust-parser]: https://github.com/Nadrieril/dhall-rust/blob/4daead27eb65e3a38869924f0f3ed1f425de1b33/dhall_syntax/src/parser.rs
 
 pub use pest::error::Error;
 pub use pest_derive::Parser;

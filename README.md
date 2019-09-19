@@ -128,39 +128,12 @@ corresponding [pest] types, respectively `Pair`, `Pairs` and `Parser`.
 If needed, the wrapped type can be accessed, but that should rarely be necessary.
 
 The [`pest_consume::parser`][`parser`] macro implements the [`Parser`] trait for your type, and enables
-some advanced features, in particular rule aliasing.
-However, most of the magic happens in [`match_nodes`].
-
-[`match_nodes`] desugars rather straightforwardly into calls to the methods corresponding to
-the rules matched on.
-For example:
-```rust
-match_nodes!(input.into_children();
-    [field(fields)..] => fields.collect(),
-)
-```
-desugars roughly into:
-```rust
-let nodes = { input.into_children() };
-if ... { // check that all rules in `nodes` are the `field` rule
-    let fields = nodes
-        .map(|node| Self::field(node)) // Recursively parse children nodes
-        ... // Propagate errors
-    { fields.collect() }
-} else {
-    ... // error because we got unexpected rules
-}
-```
+some advanced features, like precedence climbing and rule aliasing.
+A lot of the magic actually happens in [`match_nodes`]; see there for details.
 
 ## Advanced features
 
-TODO
-
-- user data
-- precedence climbing
-- rule aliasing
-- rule shortcutting
-- match_nodes outside of a parser impl
+See [here][advanced_features] for precedence climbing, passing custom data through the parser, and more.
 
 ## Compatibility
 
@@ -187,16 +160,16 @@ Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
-[`parser`]: https://docs.rs/pest_consume_macros/1.0.0/pest_consume_macros/attr.parser.html
+[advanced_features]: advanced_features/index.html
+[`parser`]: https://docs.rs/pest_consume_macros/1.0.1/pest_consume_macros/attr.parser.html
 [`match_nodes`]: macro.match_nodes.html
 [`Nodes`]: struct.Nodes.html
 [`Node`]: struct.Node.html
 [`Node::as_str`]: struct.Node.html#method.as_str
-[`Node::error`]: struct.Node.html#method.as_error
 [`Parser`]: trait.Parser.html
 [`Parser::parse`]: trait.Parser.html#method.parse
 [pest]: https://pest.rs
 [examples]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples
-[dhall-rust-parser]: https://github.com/Nadrieril/dhall-rust/blob/master/dhall_syntax/src/parser.rs
+[dhall-rust-parser]: https://github.com/Nadrieril/dhall-rust/blob/4daead27eb65e3a38869924f0f3ed1f425de1b33/dhall_syntax/src/parser.rs
 
 License: MIT OR Apache-2.0
