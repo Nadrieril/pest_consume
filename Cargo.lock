@@ -75,18 +75,18 @@ dependencies = [
 
 [[package]]
 name = "pest_consume"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "pest_consume_macros 1.0.1",
+ "pest_consume_macros 1.0.2",
  "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro-hack 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "pest_consume_macros"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "proc-macro-hack 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro2 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/pest_consume/1.0.1")]
+#![doc(html_root_url = "https://docs.rs/pest_consume/1.0.2")]
 
 //! `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
 //!
@@ -162,7 +162,7 @@
 //! dual licensed as above, without any additional terms or conditions.
 //!
 //! [advanced_features]: advanced_features/index.html
-//! [`parser`]: https://docs.rs/pest_consume_macros/1.0.1/pest_consume_macros/attr.parser.html
+//! [`parser`]: https://docs.rs/pest_consume_macros/1.0.2/pest_consume_macros/attr.parser.html
 //! [`match_nodes`]: macro.match_nodes.html
 //! [`Nodes`]: struct.Nodes.html
 //! [`Node`]: struct.Node.html

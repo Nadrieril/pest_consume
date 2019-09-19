@@ -5,7 +5,7 @@ use pest::RuleType;
 /// A trait that provides methods to parse strings.
 /// Do not implement manually; instead use the [`parser`] macro provided by this crate.
 ///
-/// [`parser`]: https://docs.rs/pest_consume_macros/1.0.1/pest_consume_macros/attr.parser.html
+/// [`parser`]: https://docs.rs/pest_consume_macros/1.0.2/pest_consume_macros/attr.parser.html
 pub trait Parser {
     type Rule: RuleType;
     #[doc(hidden)]

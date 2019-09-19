@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/pest_consume_macros/1.0.1")]
+#![doc(html_root_url = "https://docs.rs/pest_consume_macros/1.0.2")]
 
 //! This crate contains the code-generation primitives for the [pest_consume](https://docs.rs/pest_consume) crate.
 //! See there for documentation.
