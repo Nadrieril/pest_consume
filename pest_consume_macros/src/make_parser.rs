@@ -301,7 +301,7 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
         while #self_ty::allows_shortcut(#input_arg.as_rule()) {
             if let ::std::result::Result::Ok(child)
                     = #input_arg.children().single() {
-                if child.as_aliased_rule::<Self>() == #self_ty::AliasedRule::#fn_name {
+                if child.as_aliased_rule::<Self>() == #self_ty::rule_alias(#rule_enum::#fn_name) {
                     #input_arg = child;
                     continue;
                 }
