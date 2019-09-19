@@ -74,11 +74,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     assert_eq!(sum, 34.5);
 
+    let unsuccessful_parse = parse_csv("4, 0.1.1");
+    println!("failure: {}", unsuccessful_parse.unwrap_err());
+
     let successful_parse = parse_csv("-273.15 , ' a string '\n\n42, 0")?;
     println!("success: {:?}", successful_parse);
-
-    let unsuccessful_parse = parse_csv("0, 273.1.1");
-    println!("failure: {}", unsuccessful_parse.unwrap_err());
 
     Ok(())
 }
