@@ -129,29 +129,8 @@
 //! If needed, the wrapped type can be accessed, but that should rarely be necessary.
 //!
 //! The [`pest_consume::parser`][`parser`] macro implements the [`Parser`] trait for your type, and enables
-//! some advanced features, in particular rule aliasing.
-//! However, most of the magic happens in [`match_nodes`].
-//!
-//! [`match_nodes`] desugars rather straightforwardly into calls to the methods corresponding to
-//! the rules matched on.
-//! For example:
-//! ```ignore
-//! match_nodes!(input.into_children();
-//!     [field(fields)..] => fields.collect(),
-//! )
-//! ```
-//! desugars roughly into:
-//! ```ignore
-//! let nodes = { input.into_children() };
-//! if ... { // check that all rules in `nodes` are the `field` rule
-//!     let fields = nodes
-//!         .map(|node| Self::field(node)) // Recursively parse children nodes
-//!         ... // Propagate errors
-//!     { fields.collect() }
-//! } else {
-//!     ... // error because we got unexpected rules
-//! }
-//! ```
+//! some advanced features, like precedence climbing and rule aliasing.
+//! A lot of the magic actually happens in [`match_nodes`]; see there for details.
 //!
 //! # Advanced features
 //!
@@ -307,15 +286,9 @@ use pest::Parser as PestParser;
 use pest::RuleType;
 pub use pest_derive::Parser;
 
-// TODO: better doc, match_nodes outside of a parser impl
-/// Pattern-match on [`Nodes`] with familiar syntax and strong types..
+/// Pattern-match on [`Nodes`] with slice-like syntax and strong types..
 ///
 /// See [examples] and [crate-level documentation][`pest_consume`] for usage.
-///
-/// The macro takes an expression followed by `;`, followed by one or more branches separated by `,`.
-/// Each branch has the form `[$patterns] => $body`. The body is an arbitrary expression.
-///
-/// TODO: patterns
 ///
 /// Example usage:
 /// ```ignore
@@ -325,6 +298,54 @@ pub use pest_derive::Parser;
 ///     [ignored(_), field(fs)..] => fs.filter(|f| f > 0).count(),
 /// )
 /// ```
+///
+/// # Syntax
+///
+/// The macro takes an expression followed by `;`, followed by one or more branches separated by `,`.
+/// Each branch has the form `[$patterns] => $body`. The body is an arbitrary expression.
+/// The patterns are a comma-seperated list of `$rule_name($binder)`, each optionally followed by `..` to indicate
+/// a variable-length pattern.
+///
+/// # How it works
+///
+/// `match_nodes` desugars rather straightforwardly into calls to the methods corresponding to
+/// the rules matched on.
+/// For example:
+/// ```ignore
+/// match_nodes!(input.into_children();
+///     [field(fields)..] => fields.count(),
+///     [string(s), number(n)] => s.len() + n,
+/// )
+/// ```
+/// desugars roughly into:
+/// ```ignore
+/// let nodes = { input.into_children() };
+/// if ... { // check that all rules in `nodes` are the `field` rule
+///     let fields = nodes
+///         .map(|node| Self::field(node)) // Recursively parse children nodes
+///         ... // Propagate errors
+///     { fields.collect() }
+/// } else if ... { // check that the nodes has two elements, with rules `string` and `number`
+///     let s = Self::string(nodes.next().unwrap())?;
+///     let n = Self::number(nodes.next().unwrap())?;
+///     { s.len() + n }
+/// } else {
+///     ... // error because we got unexpected rules
+/// }
+/// ```
+///
+/// # Notes
+///
+/// The macro assumes that it is used within a consumer method, and uses `Self::$method(...)` to
+/// parse the input nodes.
+/// To use it outside a method, you can pass it the parser struct as follows (the angle brackets are mandatory):
+/// ```ignore
+/// match_nodes(<CSVParser>; nodes;
+///     ...
+/// )
+/// ```
+///
+/// It also assumes it can `return Err(...)` in case of errors.
 ///
 /// [`pest_consume`]: index.html
 /// [`Nodes`]: struct.Nodes.html
