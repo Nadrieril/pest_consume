@@ -237,7 +237,7 @@ pub fn match_nodes(
         let mut #i_nodes = #input_expr;
         let #i_node_rules: ::std::vec::Vec<_> = #i_nodes.aliased_rules::<#parser>().collect();
 
-        #[allow(unreachable_code)]
+        #[allow(unreachable_code, clippy::int_plus_one)]
         match () {
             #(#branches,)*
             _ => return ::std::result::Result::Err(#i_nodes.error(
