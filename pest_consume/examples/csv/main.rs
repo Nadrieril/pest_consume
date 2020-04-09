@@ -13,7 +13,7 @@ type Node<'i> = pest_consume::Node<'i, Rule, ()>;
 
 #[derive(Parser)]
 #[grammar = "../examples/csv/csv.pest"]
-struct CSVParser;
+pub struct CSVParser;
 
 #[pest_consume::parser]
 impl CSVParser {

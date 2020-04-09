@@ -414,7 +414,7 @@ pub fn make_parser(
     Ok(quote!(
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         #[allow(non_camel_case_types)]
-        enum AliasedRule {
+        pub enum AliasedRule {
             #(#aliased_rule_variants,)*
         }
 
