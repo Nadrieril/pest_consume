@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "pest_consume"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",

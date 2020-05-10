@@ -1,6 +1,6 @@
 [package]
 name = "pest_consume"
-version = "1.0.4"
+version = "1.0.5"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
