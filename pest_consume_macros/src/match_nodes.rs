@@ -1,4 +1,4 @@
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
@@ -12,9 +12,9 @@ use syn::{
 struct MatchBranch {
     // Patterns all have the form [a, b, c.., d], with a bunch of simple patterns,
     // optionally a multiple pattern, and then some more simple patterns.
-    singles_before_multiple: Vec<(Ident, Pat)>,
-    multiple: Option<(Ident, Ident)>,
-    singles_after_multiple: Vec<(Ident, Pat)>,
+    singles_before_multiple: Vec<(Option<Ident>, Pat)>,
+    multiple: Option<(Option<Ident>, Pat)>,
+    singles_after_multiple: Vec<(Option<Ident>, Pat)>,
 
     body: Expr,
 }
@@ -22,12 +22,12 @@ struct MatchBranch {
 #[derive(Clone)]
 enum MatchBranchPatternItem {
     Single {
-        rule_name: Ident,
+        rule_name: Option<Ident>,
         binder: Pat,
     },
     Multiple {
-        rule_name: Ident,
-        binder: Ident,
+        rule_name: Option<Ident>,
+        binder: Pat,
         slice_token: Token![..],
     },
 }
@@ -90,22 +90,48 @@ impl Parse for MatchBranch {
 
 impl Parse for MatchBranchPatternItem {
     fn parse(input: ParseStream) -> Result<Self> {
-        let contents;
-        let rule_name = input.parse()?;
-        parenthesized!(contents in input);
-        if input.peek(Token![..]) {
-            let binder = contents.parse()?;
-            let slice_token = input.parse()?;
-            Ok(MatchBranchPatternItem::Multiple {
-                rule_name,
-                binder,
-                slice_token,
-            })
-        } else if input.is_empty() || input.peek(Token![,]) {
-            let binder = contents.parse()?;
-            Ok(MatchBranchPatternItem::Single { rule_name, binder })
+        let ahead = input.fork();
+        let _: TokenTree = ahead.parse()?;
+        if ahead.peek(token::Paren) {
+            // If `input` starts with `foo(`
+            let contents;
+            let rule_name = input.parse()?;
+            parenthesized!(contents in input);
+            if input.peek(Token![..]) {
+                let binder = contents.parse()?;
+                let slice_token = input.parse()?;
+                Ok(MatchBranchPatternItem::Multiple {
+                    rule_name: Some(rule_name),
+                    binder,
+                    slice_token,
+                })
+            } else if input.is_empty() || input.peek(Token![,]) {
+                let binder = contents.parse()?;
+                Ok(MatchBranchPatternItem::Single {
+                    rule_name: Some(rule_name),
+                    binder,
+                })
+            } else {
+                Err(input.error("expected `..` or nothing"))
+            }
         } else {
-            Err(input.error("expected `..` or nothing"))
+            // A single pattern captures the node itself without parsing anything.
+            let binder = input.parse()?;
+            if input.peek(Token![..]) {
+                let slice_token = input.parse()?;
+                Ok(MatchBranchPatternItem::Multiple {
+                    rule_name: None,
+                    binder,
+                    slice_token,
+                })
+            } else if input.is_empty() || input.peek(Token![,]) {
+                Ok(MatchBranchPatternItem::Single {
+                    rule_name: None,
+                    binder,
+                })
+            } else {
+                Err(input.error("expected `..` or nothing"))
+            }
         }
     }
 }
@@ -150,29 +176,35 @@ fn make_branch(
     ));
     for (i, (rule_name, _)) in branch.singles_before_multiple.iter().enumerate()
     {
-        conditions.push(quote!(
-            #i_node_rules[#i] == #aliased_rule::#rule_name
-        ))
+        if let Some(rule_name) = rule_name {
+            conditions.push(quote!(
+                #i_node_rules[#i] == #aliased_rule::#rule_name
+            ))
+        }
     }
     for (i, (rule_name, _)) in branch.singles_after_multiple.iter().enumerate()
     {
-        conditions.push(quote!(
-            #i_node_rules[#i_node_rules.len()-1 - #i] == #aliased_rule::#rule_name
-        ))
+        if let Some(rule_name) = rule_name {
+            conditions.push(quote!(
+                #i_node_rules[#i_node_rules.len()-1 - #i] == #aliased_rule::#rule_name
+            ))
+        }
     }
     if let Some((rule_name, _)) = &branch.multiple {
-        conditions.push(quote!(
-            {
-                // We can't use .all() directly in the pattern guard; see
-                // https://github.com/rust-lang/rust/issues/59803.
-                let all_match = |slice: &[_]| {
-                    slice.iter().all(|r|
-                        *r == #aliased_rule::#rule_name
-                    )
-                };
-                all_match(&#i_node_rules[#start..#i_node_rules.len() - #end])
-            }
-        ))
+        if let Some(rule_name) = rule_name {
+            conditions.push(quote!(
+                {
+                    // We can't use .all() directly in the pattern guard; see
+                    // https://github.com/rust-lang/rust/issues/59803.
+                    let all_match = |slice: &[_]| {
+                        slice.iter().all(|r|
+                            *r == #aliased_rule::#rule_name
+                        )
+                    };
+                    all_match(&#i_node_rules[#start..#i_node_rules.len() - #end])
+                }
+            ))
+        }
     } else {
         // No variable-length pattern, so the size must be exactly the number of patterns
         conditions.push(quote!(
@@ -183,28 +215,49 @@ fn make_branch(
     // Once we have found a branch that matches, we need to parse the nodes.
     let mut parses = Vec::new();
     for (rule_name, binder) in branch.singles_before_multiple.iter() {
-        parses.push(quote!(
-            let #binder = #parser::#rule_name(
-                #i_nodes.next().unwrap()
-            )?;
-        ))
+        let next_node = quote!(#i_nodes.next().unwrap());
+        if let Some(rule_name) = rule_name {
+            parses.push(quote!(
+                let #binder = #parser::#rule_name(#next_node)?;
+            ))
+        } else {
+            parses.push(quote!(
+                let #binder = #next_node;
+            ))
+        }
     }
     // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
     // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
     for (rule_name, binder) in branch.singles_after_multiple.iter().rev() {
-        parses.push(quote!(
-            let #binder = #parser::#rule_name(
-                #i_nodes.next_back().unwrap()
-            )?;
-        ))
+        let next_node = quote!(#i_nodes.next_back().unwrap());
+        if let Some(rule_name) = rule_name {
+            parses.push(quote!(
+                let #binder = #parser::#rule_name(#next_node)?;
+            ))
+        } else {
+            parses.push(quote!(
+                let #binder = #next_node;
+            ))
+        }
     }
+    // Once we've taken nodes from the front and back, what remains are the nodes matched by the
+    // `..` pattern.
     if let Some((rule_name, binder)) = &branch.multiple {
-        parses.push(quote!(
-            let #binder = #i_nodes
-                .map(|i| #parser::#rule_name(i))
-                .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
-                .into_iter();
-        ))
+        if let Some(rule_name) = rule_name {
+            parses.push(quote!(
+                let #binder = #i_nodes
+                    .map(|i| #parser::#rule_name(i))
+                    .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
+                    .into_iter();
+            ))
+        } else {
+            parses.push(quote!(
+                let #binder = #i_nodes
+                    .map(|i| Ok(i))
+                    .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
+                    .into_iter();
+            ))
+        }
     }
 
     let body = &branch.body;
