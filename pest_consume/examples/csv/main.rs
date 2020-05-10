@@ -48,7 +48,7 @@ impl CSVParser {
 
     fn file(input: Node) -> Result<CSVFile> {
         Ok(match_nodes!(input.into_children();
-            [record(records).., EOI(_)] => records.collect(),
+            [record(records).., _] => records.collect(),
         ))
     }
 }
