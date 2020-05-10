@@ -174,37 +174,32 @@ fn make_branch(
     conditions.push(quote!(
         #start + #end <= #i_node_rules.len()
     ));
-    for (i, (rule_name, _)) in branch.singles_before_multiple.iter().enumerate()
-    {
-        if let Some(rule_name) = rule_name {
-            conditions.push(quote!(
-                #i_node_rules[#i] == #aliased_rule::#rule_name
-            ))
-        }
+    let matches_rule = |rule: &Option<_>, x| match rule {
+        Some(rule_name) => quote!(#x == #aliased_rule::#rule_name),
+        None => quote!(true),
+    };
+    for (i, (rule, _)) in branch.singles_before_multiple.iter().enumerate() {
+        conditions.push(matches_rule(rule, quote!(#i_node_rules[#i])))
     }
-    for (i, (rule_name, _)) in branch.singles_after_multiple.iter().enumerate()
-    {
-        if let Some(rule_name) = rule_name {
-            conditions.push(quote!(
-                #i_node_rules[#i_node_rules.len()-1 - #i] == #aliased_rule::#rule_name
-            ))
-        }
+    for (i, (rule, _)) in branch.singles_after_multiple.iter().enumerate() {
+        conditions.push(matches_rule(
+            rule,
+            quote!(#i_node_rules[#i_node_rules.len()-1 - #i]),
+        ))
     }
-    if let Some((rule_name, _)) = &branch.multiple {
-        if let Some(rule_name) = rule_name {
-            conditions.push(quote!(
-                {
-                    // We can't use .all() directly in the pattern guard; see
-                    // https://github.com/rust-lang/rust/issues/59803.
-                    let all_match = |slice: &[_]| {
-                        slice.iter().all(|r|
-                            *r == #aliased_rule::#rule_name
-                        )
-                    };
-                    all_match(&#i_node_rules[#start..#i_node_rules.len() - #end])
-                }
-            ))
-        }
+    if let Some((rule, _)) = &branch.multiple {
+        // Hygiene looks dodgy for the `r`, but it works.
+        let matches_r = matches_rule(rule, quote!(*r));
+        conditions.push(quote!(
+            {
+                // We can't use .all() directly in the pattern guard; see
+                // https://github.com/rust-lang/rust/issues/59803.
+                let all_match = |slice: &[_]| {
+                    slice.iter().all(|r| #matches_r)
+                };
+                all_match(&#i_node_rules[#start..#i_node_rules.len() - #end])
+            }
+        ))
     } else {
         // No variable-length pattern, so the size must be exactly the number of patterns
         conditions.push(quote!(
@@ -212,52 +207,39 @@ fn make_branch(
         ))
     }
 
+    let parse_rule = |rule: &Option<_>, node| match rule {
+        Some(rule_name) => quote!(#parser::#rule_name(#node)),
+        None => quote!(Ok(#node)),
+    };
     // Once we have found a branch that matches, we need to parse the nodes.
     let mut parses = Vec::new();
     for (rule_name, binder) in branch.singles_before_multiple.iter() {
         let next_node = quote!(#i_nodes.next().unwrap());
-        if let Some(rule_name) = rule_name {
-            parses.push(quote!(
-                let #binder = #parser::#rule_name(#next_node)?;
-            ))
-        } else {
-            parses.push(quote!(
-                let #binder = #next_node;
-            ))
-        }
+        let parse = parse_rule(rule_name, next_node);
+        parses.push(quote!(
+            let #binder = #parse?;
+        ))
     }
     // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
     // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
-    for (rule_name, binder) in branch.singles_after_multiple.iter().rev() {
+    for (rule, binder) in branch.singles_after_multiple.iter().rev() {
         let next_node = quote!(#i_nodes.next_back().unwrap());
-        if let Some(rule_name) = rule_name {
-            parses.push(quote!(
-                let #binder = #parser::#rule_name(#next_node)?;
-            ))
-        } else {
-            parses.push(quote!(
-                let #binder = #next_node;
-            ))
-        }
+        let parse = parse_rule(rule, next_node);
+        parses.push(quote!(
+            let #binder = #parse?;
+        ))
     }
     // Once we've taken nodes from the front and back, what remains are the nodes matched by the
     // `..` pattern.
-    if let Some((rule_name, binder)) = &branch.multiple {
-        if let Some(rule_name) = rule_name {
-            parses.push(quote!(
-                let #binder = #i_nodes
-                    .map(|i| #parser::#rule_name(i))
-                    .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
-                    .into_iter();
-            ))
-        } else {
-            parses.push(quote!(
-                let #binder = #i_nodes
-                    .map(|i| Ok(i))
-                    .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
-                    .into_iter();
-            ))
-        }
+    if let Some((rule, binder)) = &branch.multiple {
+        // Hygiene looks dodgy for `n`, but it works.
+        let parse_n = parse_rule(rule, quote!(n));
+        parses.push(quote!(
+            let #binder = #i_nodes
+                .map(|n| #parse_n)
+                .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
+                .into_iter();
+        ))
     }
 
     let body = &branch.body;
