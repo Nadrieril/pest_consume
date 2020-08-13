@@ -133,7 +133,7 @@ A lot of the magic actually happens in [`match_nodes`]; see there for details.
 
 ## Advanced features
 
-See [here][advanced_features] for precedence climbing, passing custom data through the parser, and more.
+See [here](pest_consume/src/advanced_features) for precedence climbing, passing custom data through the parser, and more.
 
 ## Compatibility
 
