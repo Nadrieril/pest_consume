@@ -178,7 +178,7 @@ pub use pest_derive::Parser;
 
 mod match_nodes;
 #[doc(hidden)]
-pub use match_nodes::proc_macro_hack_match_nodes;
+pub use match_nodes::*;
 
 pub mod advanced_features;
 
