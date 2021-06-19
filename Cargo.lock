@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "pest_consume"
-version = "1.0.6"
+version = "1.1.0"
 dependencies = [
  "lazy_static",
  "pest",

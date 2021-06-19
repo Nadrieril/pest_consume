@@ -1,6 +1,6 @@
 [package]
 name = "pest_consume"
-version = "1.0.6"
+version = "1.1.0"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -13,7 +13,7 @@ categories = ["parsing"]
 [dependencies]
 pest = "2.1"
 pest_derive = "2.1"
-pest_consume_macros = { version = "1.0.3", path = "../pest_consume_macros" }
+pest_consume_macros = { version = "1.1.0", path = "../pest_consume_macros" }
 
 [dev-dependencies]
 lazy_static = "1.4.0"
