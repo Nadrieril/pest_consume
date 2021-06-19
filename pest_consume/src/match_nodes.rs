@@ -80,5 +80,4 @@
 /// [advanced features]: advanced_features/index.html
 /// [`Nodes`]: struct.Nodes.html
 /// [examples]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples
-#[proc_macro_hack::proc_macro_hack]
 pub use pest_consume_macros::match_nodes;

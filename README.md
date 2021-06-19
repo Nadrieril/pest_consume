@@ -137,13 +137,7 @@ See [here](pest_consume/src/advanced_features) for precedence climbing, passing 
 
 ## Compatibility
 
-Works with rust >= 1.37.
-
-Needs rust >= 1.37 because it uses
-[this feature](https://blog.rust-lang.org/2019/08/15/Rust-1.37.0.html#referring-to-enum-variants-through-type-aliases).
-If there is demand for older versions of Rust, we might be able to work around that.
-
-Works with older nightly Rust, with `#![feature(type_alias_enum_variants)]`.
+Works with rust >= 1.45 (because it exports a proc-macro in expression position).
 
 ## License
 

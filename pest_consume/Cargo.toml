@@ -13,7 +13,6 @@ categories = ["parsing"]
 [dependencies]
 pest = "2.1"
 pest_derive = "2.1"
-proc-macro-hack = "0.5.9"
 pest_consume_macros = { version = "1.0.3", path = "../pest_consume_macros" }
 
 [dev-dependencies]

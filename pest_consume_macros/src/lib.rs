@@ -20,7 +20,7 @@ pub fn parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// See [pest_consume](https://docs.rs/pest_consume) for documentation.
-#[proc_macro_hack::proc_macro_hack]
+#[proc_macro]
 pub fn match_nodes(input: TokenStream) -> TokenStream {
     TokenStream::from(match match_nodes::match_nodes(input) {
         Ok(tokens) => tokens,
