@@ -92,9 +92,9 @@
 //!     }
 //! ```
 //!
-//! When the rule has children, the [`match_nodes`] macro provides a
+//! When the rule has children, the [`match_nodes!`] macro provides a
 //! typed way to parse the children.
-//! [`match_nodes`] uses a syntax similar to slice patterns, and allows for several branches like in
+//! [`match_nodes!`] uses a syntax similar to slice patterns, and allows for several branches like in
 //! a `match` expression.
 //!
 //! We specify for each branch the expected rules of the children, and the macro will recursively consume the
@@ -130,7 +130,7 @@
 //!
 //! The [`pest_consume::parser`][`parser`] macro implements the [`Parser`] trait for your type, and enables
 //! some advanced features, like precedence climbing and rule aliasing.
-//! A lot of the magic actually happens in [`match_nodes`]; see there for details.
+//! A lot of the magic actually happens in [`match_nodes!`]; see there for details.
 //!
 //! # Advanced features
 //!
@@ -163,7 +163,6 @@
 //!
 //! [advanced_features]: advanced_features/index.html
 //! [`parser`]: https://docs.rs/pest_consume_macros/1.0.2/pest_consume_macros/attr.parser.html
-//! [`match_nodes`]: macro.match_nodes.html
 //! [`Nodes`]: struct.Nodes.html
 //! [`Node`]: struct.Node.html
 //! [`Node::as_str`]: struct.Node.html#method.as_str

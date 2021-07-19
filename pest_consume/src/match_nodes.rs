@@ -80,4 +80,11 @@
 /// [advanced features]: advanced_features/index.html
 /// [`Nodes`]: struct.Nodes.html
 /// [examples]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples
-pub use pest_consume_macros::match_nodes;
+// We wrap the proc-macro in a macro here because I want to write the doc in this crate.
+#[macro_export]
+macro_rules! match_nodes {
+    ($($x:tt)*) => {
+        $crate::match_nodes_!($($x)*)
+    };
+}
+pub use pest_consume_macros::match_nodes as match_nodes_;
