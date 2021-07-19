@@ -36,7 +36,7 @@
 ///     let fields = nodes
 ///         .map(|node| Self::field(node)) // Recursively parse children nodes
 ///         ... // Propagate errors
-///     { fields.collect() }
+///     { fields.count() }
 /// } else if ... { // check that the nodes has two elements, with rules `string` and `number`
 ///     let s = Self::string(nodes.next().unwrap())?;
 ///     let n = Self::number(nodes.next().unwrap())?;
