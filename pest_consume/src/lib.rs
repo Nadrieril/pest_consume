@@ -162,7 +162,7 @@
 //! dual licensed as above, without any additional terms or conditions.
 //!
 //! [advanced_features]: advanced_features/index.html
-//! [`parser`]: https://docs.rs/pest_consume_macros/1.0.2/pest_consume_macros/attr.parser.html
+//! [`parser`]: macro@crate::parser
 //! [`Nodes`]: struct.Nodes.html
 //! [`Node`]: struct.Node.html
 //! [`Node::as_str`]: struct.Node.html#method.as_str

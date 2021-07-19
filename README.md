@@ -158,14 +158,13 @@ Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
-[advanced_features]: advanced_features/index.html
-[`parser`]: https://docs.rs/pest_consume_macros/1.0.2/pest_consume_macros/attr.parser.html
-[`match_nodes`]: macro.match_nodes.html
-[`Nodes`]: struct.Nodes.html
-[`Node`]: struct.Node.html
-[`Node::as_str`]: struct.Node.html#method.as_str
-[`Parser`]: trait.Parser.html
-[`Parser::parse`]: trait.Parser.html#method.parse
+[advanced_features]: https://docs.rs/pest_consume/latest/pest_consume/advanced_features/index.html
+[`match_nodes`]: https://docs.rs/pest_consume/latest/pest_consume/macro.match_nodes.html
+[`Nodes`]: https://docs.rs/pest_consume/latest/pest_consume/struct.Nodes.html
+[`Node`]: https://docs.rs/pest_consume/latest/pest_consume/struct.Node.html
+[`Node::as_str`]: https://docs.rs/pest_consume/latest/pest_consume/struct.Node.html#method.as_str
+[`Parser`]: https://docs.rs/pest_consume/latest/pest_consume/trait.Parser.html
+[`Parser::parse`]: https://docs.rs/pest_consume/latest/pest_consume/trait.Parser.html#method.parse
 [pest]: https://pest.rs
 [examples]: https://github.com/Nadrieril/pest_consume/tree/master/pest_consume/examples
 [dhall-rust-parser]: https://github.com/Nadrieril/dhall-rust/blob/4daead27eb65e3a38869924f0f3ed1f425de1b33/dhall_syntax/src/parser.rs
