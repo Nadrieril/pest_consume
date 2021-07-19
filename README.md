@@ -1,5 +1,9 @@
 # pest_consume
 
+**Important**: I do not actively maintain this anymore.
+I use it in https://github.com/Nadrieril/dhall-rust but otherwise don't plan do add features or other such things.
+Think of it as a proof-of-concept.
+
 `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
 
 ## Motivation
