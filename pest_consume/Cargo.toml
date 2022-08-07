@@ -1,6 +1,6 @@
 [package]
 name = "pest_consume"
-version = "1.1.1"
+version = "1.1.2"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -11,8 +11,8 @@ keywords = ["pest", "parser", "peg", "grammar"]
 categories = ["parsing"]
 
 [dependencies]
-pest = "2.1"
-pest_derive = "2.1"
+pest = "2.2"
+pest_derive = "2.2"
 pest_consume_macros = { version = "1.1.0", path = "../pest_consume_macros" }
 
 [dev-dependencies]
