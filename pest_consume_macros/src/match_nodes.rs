@@ -9,12 +9,18 @@ use syn::{
 };
 
 #[derive(Clone)]
+struct MatchBranchPattern {
+    rule_name: Option<Ident>,
+    binder: Pat,
+}
+
+#[derive(Clone)]
 struct MatchBranch {
     // Patterns all have the form [a, b, c.., d], with a bunch of simple patterns,
     // optionally a multiple pattern, and then some more simple patterns.
-    singles_before_multiple: Vec<(Option<Ident>, Pat)>,
-    multiple: Option<(Option<Ident>, Pat)>,
-    singles_after_multiple: Vec<(Option<Ident>, Pat)>,
+    singles_before_multiple: Vec<MatchBranchPattern>,
+    multiple: Option<MatchBranchPattern>,
+    singles_after_multiple: Vec<MatchBranchPattern>,
 
     body: Expr,
 }
@@ -22,12 +28,10 @@ struct MatchBranch {
 #[derive(Clone)]
 enum MatchBranchPatternItem {
     Single {
-        rule_name: Option<Ident>,
-        binder: Pat,
+        pat: MatchBranchPattern,
     },
     Multiple {
-        rule_name: Option<Ident>,
-        binder: Pat,
+        pat: MatchBranchPattern,
         slice_token: Token![..],
     },
 }
@@ -52,20 +56,16 @@ impl Parse for MatchBranch {
         let mut singles_after_multiple = Vec::new();
         for item in pattern.clone() {
             match item {
-                Single { rule_name, binder } => {
+                Single { pat } => {
                     if multiple.is_none() {
-                        singles_before_multiple.push((rule_name, binder))
+                        singles_before_multiple.push(pat)
                     } else {
-                        singles_after_multiple.push((rule_name, binder))
+                        singles_after_multiple.push(pat)
                     }
                 }
-                Multiple {
-                    rule_name,
-                    binder,
-                    slice_token,
-                } => {
+                Multiple { pat, slice_token } => {
                     if multiple.is_none() {
-                        multiple = Some((rule_name, binder))
+                        multiple = Some(pat)
                     } else {
                         return Err(Error::new(
                             slice_token.span(),
@@ -101,15 +101,19 @@ impl Parse for MatchBranchPatternItem {
                 let binder = contents.parse()?;
                 let slice_token = input.parse()?;
                 Ok(MatchBranchPatternItem::Multiple {
-                    rule_name: Some(rule_name),
-                    binder,
+                    pat: MatchBranchPattern {
+                        rule_name: Some(rule_name),
+                        binder,
+                    },
                     slice_token,
                 })
             } else if input.is_empty() || input.peek(Token![,]) {
                 let binder = contents.parse()?;
                 Ok(MatchBranchPatternItem::Single {
-                    rule_name: Some(rule_name),
-                    binder,
+                    pat: MatchBranchPattern {
+                        rule_name: Some(rule_name),
+                        binder,
+                    },
                 })
             } else {
                 Err(input.error("expected `..` or nothing"))
@@ -120,14 +124,18 @@ impl Parse for MatchBranchPatternItem {
             if input.peek(Token![..]) {
                 let slice_token = input.parse()?;
                 Ok(MatchBranchPatternItem::Multiple {
-                    rule_name: None,
-                    binder,
+                    pat: MatchBranchPattern {
+                        rule_name: None,
+                        binder,
+                    },
                     slice_token,
                 })
             } else if input.is_empty() || input.peek(Token![,]) {
                 Ok(MatchBranchPatternItem::Single {
-                    rule_name: None,
-                    binder,
+                    pat: MatchBranchPattern {
+                        rule_name: None,
+                        binder,
+                    },
                 })
             } else {
                 Err(input.error("expected `..` or nothing"))
@@ -176,22 +184,22 @@ fn make_branch(
     conditions.push(quote!(
         #start + #end <= #i_nodes.len()
     ));
-    let matches_rule = |rule: &Option<_>, x| match rule {
+    let matches_pat = |pat: &MatchBranchPattern, x| match &pat.rule_name {
         Some(rule_name) => {
             quote!(#node_namer_ty::node_name(&#i_node_namer, &#x) == #name_enum::#rule_name)
         }
         None => quote!(true),
     };
-    for (i, (rule, _)) in branch.singles_before_multiple.iter().enumerate() {
-        conditions.push(matches_rule(rule, quote!(#i_nodes[#i])))
+    for (i, pat) in branch.singles_before_multiple.iter().enumerate() {
+        conditions.push(matches_pat(pat, quote!(#i_nodes[#i])))
     }
-    for (i, (rule, _)) in branch.singles_after_multiple.iter().enumerate() {
+    for (i, pat) in branch.singles_after_multiple.iter().enumerate() {
         conditions
-            .push(matches_rule(rule, quote!(#i_nodes[#i_nodes.len()-1 - #i])))
+            .push(matches_pat(pat, quote!(#i_nodes[#i_nodes.len()-1 - #i])))
     }
-    if let Some((rule, _)) = &branch.multiple {
+    if let Some(pat) = &branch.multiple {
         // Hygiene looks dodgy for the `r`, but it works.
-        let matches_r = matches_rule(rule, quote!(*r));
+        let matches_r = matches_pat(pat, quote!(*r));
         conditions.push(quote!(
             {
                 // We can't use .all() directly in the pattern guard; see
@@ -215,27 +223,30 @@ fn make_branch(
     };
     // Once we have found a branch that matches, we need to parse the nodes.
     let mut parses = Vec::new();
-    for (rule_name, binder) in branch.singles_before_multiple.iter() {
+    for pat in branch.singles_before_multiple.iter() {
         let next_node = quote!(#i_nodes_iter.next().unwrap());
-        let parse = parse_rule(rule_name, next_node);
+        let parse = parse_rule(&pat.rule_name, next_node);
+        let binder = &pat.binder;
         parses.push(quote!(
             let #binder = #parse?;
         ))
     }
     // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
     // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
-    for (rule, binder) in branch.singles_after_multiple.iter().rev() {
+    for pat in branch.singles_after_multiple.iter().rev() {
         let next_node = quote!(#i_nodes_iter.next_back().unwrap());
-        let parse = parse_rule(rule, next_node);
+        let parse = parse_rule(&pat.rule_name, next_node);
+        let binder = &pat.binder;
         parses.push(quote!(
             let #binder = #parse?;
         ))
     }
     // Once we've taken nodes from the front and back, what remains are the nodes matched by the
     // `..` pattern.
-    if let Some((rule, binder)) = &branch.multiple {
+    if let Some(pat) = &branch.multiple {
         // Hygiene looks dodgy for `n`, but it works.
-        let parse_n = parse_rule(rule, quote!(n));
+        let parse_n = parse_rule(&pat.rule_name, quote!(n));
+        let binder = &pat.binder;
         parses.push(quote!(
             let #binder = #i_nodes_iter
                 .map(|n| #parse_n)
