@@ -11,6 +11,7 @@ keywords = ["pest", "parser", "peg", "grammar"]
 categories = ["parsing"]
 
 [dependencies]
+itertools = "0.12"
 pest = "2.7"
 pest_derive = "2.7"
 pest_consume_macros = { version = "1.1.0", path = "../pest_consume_macros" }

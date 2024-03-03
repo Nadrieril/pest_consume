@@ -112,6 +112,9 @@ macro_rules! match_nodes {
 }
 pub use pest_consume_macros::match_nodes as match_nodes_;
 
+// Reexport
+pub use itertools::Itertools;
+
 /// The trait that powers the `match_nodes` macro. Exposed to make `match_nodes` testable and
 /// usable outside `pest`. It and its siblings are very ad-hoc for macro purposes and will break
 /// semver.
@@ -125,7 +128,7 @@ pub trait NodeList<M: NodeMatcher> {
 /// Sibling trait to `NodeList`. The separate trait is needed so we can guide inference in macros
 /// (where we can't write the type name).
 pub trait NodeNamer<M: NodeMatcher> {
-    type Node: Clone;
+    type Node;
     /// The type of errors.
     type Error;
 

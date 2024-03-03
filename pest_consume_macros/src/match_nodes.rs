@@ -144,7 +144,7 @@ impl Parse for MacroInput {
 /// `process_item` for each item. Calls `error` if we can't proceed.
 fn traverse_pattern(
     branch: &MatchBranch,
-    i_slice: &Ident,
+    i_iter: &Ident,
     matches_pat: impl Fn(&MatchBranchPattern, TokenStream) -> TokenStream,
     process_item: impl Fn(&MatchBranchPatternItem, TokenStream) -> TokenStream,
     error: TokenStream,
@@ -162,9 +162,8 @@ fn traverse_pattern(
         patterns = remaining_pats;
         let this_node = process_item(item, quote!(node));
         steps.push(quote!(
-            let [rest @ .., node] = #i_slice else { #error };
+            let Some(node) = #i_iter.next_back() else { #error };
             #this_node;
-            #i_slice = rest;
         ));
     }
 
@@ -173,9 +172,8 @@ fn traverse_pattern(
             Single { .. } => {
                 let this_node = process_item(item, quote!(node));
                 steps.push(quote!(
-                    let [node, rest @ ..] = #i_slice else { #error };
+                    let Some(node) = #i_iter.next() else { #error };
                     #this_node;
-                    #i_slice = rest;
                 ));
             }
             item @ Multiple { pat, .. } => {
@@ -183,16 +181,16 @@ fn traverse_pattern(
                 let matches_node = matches_pat(pat, quote!(node));
                 let this_slice = process_item(item, quote!(matched));
                 steps.push(quote!(
-                    let count_matching = #i_slice.iter().take_while(|node| #matches_node).count();
-                    let (matched, rest) = #i_slice.split_at(count_matching);
+                    let matched = <_ as ::pest_consume::Itertools>::peeking_take_while(&mut #i_iter, |node| #matches_node);
                     #this_slice;
-                    #i_slice = rest;
                 ))
             }
         }
     }
 
     quote!(
+        #[allow(unused_mut)]
+        let mut #i_iter = #i_iter.peekable();
         #(#steps)*
     )
 }
@@ -204,7 +202,7 @@ fn make_branch(
     parser: &Type,
 ) -> TokenStream {
     use MatchBranchPatternItem::*;
-    let i_nodes_slice = Ident::new("___nodes_slice", Span::call_site());
+    let i_nodes_iter = Ident::new("___nodes_iter", Span::call_site());
     let name_enum = quote!(<#parser as ::pest_consume::NodeMatcher>::NodeName);
     let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);
 
@@ -233,11 +231,14 @@ fn make_branch(
             )
         }
         // The matched subslice was already selected to be matching the rules, so nothing to do.
-        Multiple { .. } => quote!(),
+        Multiple { .. } => quote!(
+            // Consume the iterator.
+            #i_matched.count();
+        ),
     };
     let conditions = traverse_pattern(
         branch,
-        &i_nodes_slice,
+        &i_nodes_iter,
         matches_pat,
         process_item,
         quote!(return false),
@@ -250,7 +251,7 @@ fn make_branch(
     };
     let process_item = |item: &_, i_matched| match item {
         Single { pat } => {
-            let parse = parse_rule(&pat.rule_name, quote!(#i_matched.clone()));
+            let parse = parse_rule(&pat.rule_name, quote!(#i_matched));
             let binder = &pat.binder;
             quote!(
                 let #binder = #parse?;
@@ -261,8 +262,6 @@ fn make_branch(
             let binder = &pat.binder;
             quote!(
                 let #binder = #i_matched
-                    .iter()
-                    .cloned()
                     .map(|node| #parse_node)
                     .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
                     .into_iter();
@@ -271,7 +270,7 @@ fn make_branch(
     };
     let parses = traverse_pattern(
         branch,
-        &i_nodes_slice,
+        &i_nodes_iter,
         matches_pat,
         process_item,
         quote!(unreachable!()),
@@ -280,15 +279,14 @@ fn make_branch(
     let body = &branch.body;
     quote!(
         _ if {
-            #[allow(unused_mut)]
-            let check_condition = |mut #i_nodes_slice: &[_]| -> bool {
+            let check_condition = |slice: &[_]| -> bool {
+                let #i_nodes_iter = slice.iter();
                 #conditions
-                #i_nodes_slice.is_empty()
+                #i_nodes_iter.next().is_none()
             };
             check_condition(#i_nodes.as_slice())
         } => {
-            #[allow(unused_mut)]
-            let mut #i_nodes_slice = #i_nodes.as_slice();
+            let #i_nodes_iter = #i_nodes.into_iter();
             #parses
             #body
         }

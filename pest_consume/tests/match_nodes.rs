@@ -18,12 +18,12 @@ macro_rules! simple_matcher {
             $($variant,)*
         }
 
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Debug, PartialEq, Eq)]
         enum $kind {
             $($variant($ty),)*
         }
 
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Debug, PartialEq, Eq)]
         struct $node {
             kind: $kind,
             tag: Option<String>,
