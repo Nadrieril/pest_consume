@@ -165,7 +165,9 @@ fn make_branch(
     i_node_rules: &Ident,
     parser: &Type,
 ) -> Result<TokenStream> {
-    let aliased_rule = quote!(<#parser as ::pest_consume::Parser>::AliasedRule);
+    let i_nodes_iter = Ident::new("___nodes_iter", Span::call_site());
+    let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
+    let name_enum = quote!(<#parser as ::pest_consume::NodeMatcher>::NodeName);
 
     // Find which branch to take
     let mut conditions = Vec::new();
@@ -175,7 +177,7 @@ fn make_branch(
         #start + #end <= #i_node_rules.len()
     ));
     let matches_rule = |rule: &Option<_>, x| match rule {
-        Some(rule_name) => quote!(#x == #aliased_rule::#rule_name),
+        Some(rule_name) => quote!(#x == #name_enum::#rule_name),
         None => quote!(true),
     };
     for (i, (rule, _)) in branch.singles_before_multiple.iter().enumerate() {
@@ -214,7 +216,7 @@ fn make_branch(
     // Once we have found a branch that matches, we need to parse the nodes.
     let mut parses = Vec::new();
     for (rule_name, binder) in branch.singles_before_multiple.iter() {
-        let next_node = quote!(#i_nodes.next().unwrap());
+        let next_node = quote!(#i_nodes_iter.next().unwrap());
         let parse = parse_rule(rule_name, next_node);
         parses.push(quote!(
             let #binder = #parse?;
@@ -223,7 +225,7 @@ fn make_branch(
     // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
     // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
     for (rule, binder) in branch.singles_after_multiple.iter().rev() {
-        let next_node = quote!(#i_nodes.next_back().unwrap());
+        let next_node = quote!(#i_nodes_iter.next_back().unwrap());
         let parse = parse_rule(rule, next_node);
         parses.push(quote!(
             let #binder = #parse?;
@@ -235,7 +237,7 @@ fn make_branch(
         // Hygiene looks dodgy for `n`, but it works.
         let parse_n = parse_rule(rule, quote!(n));
         parses.push(quote!(
-            let #binder = #i_nodes
+            let #binder = #i_nodes_iter
                 .map(|n| #parse_n)
                 .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
                 .into_iter();
@@ -245,6 +247,8 @@ fn make_branch(
     let body = &branch.body;
     Ok(quote!(
         _ if #(#conditions &&)* true => {
+            #[allow(unused_mut)]
+            let mut #i_nodes_iter = #node_list_ty::iter_nodes(#i_nodes);
             #(#parses)*
             #body
         }
@@ -267,17 +271,19 @@ pub fn match_nodes(
         .map(|br| make_branch(br, &i_nodes, &i_node_rules, parser))
         .collect::<Result<Vec<_>>>()?;
 
+    let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
     Ok(quote!({
-        #[allow(unused_mut)]
         let mut #i_nodes = #input_expr;
-        let #i_node_rules: ::std::vec::Vec<_> = #i_nodes.aliased_rules::<#parser>().collect();
+        let #i_node_rules: ::std::vec::Vec<_> = #node_list_ty::node_names(&#i_nodes);
 
         #[allow(unreachable_code, clippy::int_plus_one)]
         match () {
             #(#branches,)*
-            _ => return ::std::result::Result::Err(#i_nodes.error(
-                format!("Nodes didn't match any pattern: {:?}", #i_node_rules)
-            )),
+            _ => return ::std::result::Result::Err(
+                #node_list_ty::error(&#i_nodes,
+                    format!("Nodes didn't match any pattern: {:?}", #i_node_rules)
+                )
+            ),
         }
     }))
 }

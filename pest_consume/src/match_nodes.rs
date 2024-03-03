@@ -88,3 +88,47 @@ macro_rules! match_nodes {
     };
 }
 pub use pest_consume_macros::match_nodes as match_nodes_;
+
+/// The trait that powers the `match_nodes` macro. Exposed to make `match_nodes` testable and
+/// usable outside `pest`. It's a bit ad-hoc and will break semver.
+pub trait NodeList<M: NodeMatcher> {
+    /// An iterator of nodes.
+    type NodeListIter: Iterator + DoubleEndedIterator;
+    /// The type of errors.
+    type Error;
+
+    fn node_names(&self) -> Vec<M::NodeName>;
+    fn iter_nodes(self) -> Self::NodeListIter;
+    fn error(&self, message: String) -> Self::Error;
+}
+
+/// Sibling trait to `NodeList`.
+pub trait NodeMatcher {
+    /// An enum such that each `NodeName::$rule` has a corresponding `Self::$rule(n: Self::Node)` function.
+    type NodeName: Eq;
+}
+
+impl<T: crate::Parser> NodeMatcher for T {
+    type NodeName = T::AliasedRule;
+}
+
+impl<'i, P, D> NodeList<P> for crate::Nodes<'i, P::Rule, D>
+where
+    D: Clone,
+    P: crate::Parser,
+{
+    type NodeListIter = crate::Nodes<'i, P::Rule, D>;
+    type Error = pest::error::Error<P::Rule>;
+
+    fn node_names(&self) -> Vec<<P as NodeMatcher>::NodeName> {
+        self.aliased_rules::<P>().collect()
+    }
+
+    fn iter_nodes(self) -> Self::NodeListIter {
+        self
+    }
+
+    fn error(&self, message: String) -> Self::Error {
+        self.error(message)
+    }
+}
