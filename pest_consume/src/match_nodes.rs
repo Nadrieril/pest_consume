@@ -46,6 +46,16 @@
 /// }
 /// ```
 ///
+/// # Tags
+///
+/// `match_nodes` supports matching with tags:
+///
+/// ```ignore
+/// match_nodes!(input.into_children();
+///     [tag1 # string(s).., number(n)] => { ... },
+/// )
+/// ```
+///
 /// # Matching raw nodes
 ///
 /// Sometimes you may want to manipulate `Node`s directly. For that, just omit a rule name when
@@ -62,6 +72,19 @@
 /// if you want the ability to choose from multiple parsing functions for the same rule. This can
 /// usually be avoided by using some [advanced features] or tweaking the grammar, but if not you
 /// can always fall back to manipulating `Node`s by hand.
+///
+/// # Variable-length patterns
+///
+/// Variable-length patterns (`rule(binder)..`) are special: they match any number of nodes with
+/// the given rule, and the `binder` is bound to an iterator of the parsed results.
+///
+/// Multiple variable-length patterns match greedily: in `[rule(x).., rule(y)..]`, `y` will always
+/// be empty because all the elements were matched by `x`.
+///
+/// Subtlety with trailing patterns: single trailing patterns are correctly handled, e.g.
+/// `[rule(many).., rule(x), rule(y)]` works as expected. This doesn't apply to patterns in the
+/// middle: `[rule(many1).., rule(x), other_rule(many2)..]` will always fail because `many1` will
+/// have consumed all the `rule` nodes.
 ///
 /// # Notes
 ///
