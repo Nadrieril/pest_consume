@@ -48,18 +48,23 @@ macro_rules! simple_matcher {
         }
 
         impl pest_consume::NodeList<$matcher> for Vec<$node> {
-            type NodeListIter = <Vec<$node> as IntoIterator>::IntoIter;
+            type Node = $node;
+            type NodeNamer = Namer;
+
+            fn consume(self) -> (Vec<Self::Node>, Namer) {
+                (self, Namer)
+            }
+        }
+
+        struct Namer;
+        impl pest_consume::NodeNamer<$matcher> for Namer {
+            type Node = $node;
             type Error = ();
 
-            fn node_names(&self) -> Vec<$name> {
-                self.iter().map($node::name).collect()
+            fn node_name(&self, n: &Self::Node) -> $name {
+                n.name()
             }
-
-            fn iter_nodes(self) -> Self::NodeListIter {
-                self.into_iter()
-            }
-
-            fn error(&self, _message: String) -> Self::Error {
+            fn error(self, _message: String) -> Self::Error {
                 ()
             }
         }

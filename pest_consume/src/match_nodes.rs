@@ -90,21 +90,29 @@ macro_rules! match_nodes {
 pub use pest_consume_macros::match_nodes as match_nodes_;
 
 /// The trait that powers the `match_nodes` macro. Exposed to make `match_nodes` testable and
-/// usable outside `pest`. It's a bit ad-hoc and will break semver.
+/// usable outside `pest`. It and its siblings are very ad-hoc for macro purposes and will break
+/// semver.
 pub trait NodeList<M: NodeMatcher> {
-    /// An iterator of nodes.
-    type NodeListIter: Iterator + DoubleEndedIterator;
+    type Node;
+    /// The data for the next step.
+    type NodeNamer: NodeNamer<M>;
+    fn consume(self) -> (Vec<Self::Node>, Self::NodeNamer);
+}
+
+/// Sibling trait to `NodeList`. The separate trait is needed so we can guide inference in macros
+/// (where we can't write the type name).
+pub trait NodeNamer<M: NodeMatcher> {
+    type Node;
     /// The type of errors.
     type Error;
 
-    fn node_names(&self) -> Vec<M::NodeName>;
-    fn iter_nodes(self) -> Self::NodeListIter;
-    fn error(&self, message: String) -> Self::Error;
+    fn node_name(&self, n: &Self::Node) -> M::NodeName;
+    fn error(self, message: String) -> Self::Error;
 }
 
 /// Sibling trait to `NodeList`.
 pub trait NodeMatcher {
-    /// An enum such that each `NodeName::$rule` has a corresponding `Self::$rule(n: Self::Node)` function.
+    /// An enum such that each `NodeName::$rule` has a corresponding `Self::$rule(n: Node) -> T` function.
     type NodeName: Eq;
 }
 
@@ -117,18 +125,27 @@ where
     D: Clone,
     P: crate::Parser,
 {
-    type NodeListIter = crate::Nodes<'i, P::Rule, D>;
+    type Node = crate::Node<'i, P::Rule, D>;
+    type NodeNamer = Self;
+
+    fn consume(mut self) -> (Vec<Self::Node>, Self::NodeNamer) {
+        let vec = self.by_ref().collect();
+        (vec, self)
+    }
+}
+
+impl<'i, P, D> NodeNamer<P> for crate::Nodes<'i, P::Rule, D>
+where
+    D: Clone,
+    P: crate::Parser,
+{
+    type Node = crate::Node<'i, P::Rule, D>;
     type Error = pest::error::Error<P::Rule>;
 
-    fn node_names(&self) -> Vec<<P as NodeMatcher>::NodeName> {
-        self.aliased_rules::<P>().collect()
+    fn node_name(&self, n: &Self::Node) -> P::AliasedRule {
+        n.as_aliased_rule::<P>()
     }
-
-    fn iter_nodes(self) -> Self::NodeListIter {
-        self
-    }
-
-    fn error(&self, message: String) -> Self::Error {
-        self.error(message)
+    fn error(self, message: String) -> Self::Error {
+        (&self).error(message)
     }
 }

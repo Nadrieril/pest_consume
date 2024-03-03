@@ -20,7 +20,7 @@ pub struct Node<'input, Rule: RuleType, Data> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Nodes<'input, Rule: RuleType, Data> {
     pairs: Pairs<'input, Rule>,
-    span: Span<'input>,
+    pub(crate) span: Span<'input>,
     user_data: Data,
 }
 
@@ -147,19 +147,6 @@ impl<'i, R: RuleType, D> Nodes<'i, R, D> {
                 ))
             }
         }
-    }
-    #[doc(hidden)]
-    pub fn aliased_rules<C>(
-        &self,
-    ) -> std::iter::Map<
-        Pairs<'i, R>,
-        impl FnMut(Pair<'i, R>) -> <C as Parser>::AliasedRule,
-    >
-    where
-        C: Parser<Rule = R>,
-        <C as Parser>::Parser: PestParser<R>,
-    {
-        self.pairs.clone().map(|p| C::rule_alias(p.as_rule()))
     }
     /// Construct a node with the provided pair, passing the user data along.
     fn with_pair(&self, pair: Pair<'i, R>) -> Node<'i, R, D>

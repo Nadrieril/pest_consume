@@ -162,32 +162,32 @@ impl Parse for MacroInput {
 fn make_branch(
     branch: &MatchBranch,
     i_nodes: &Ident,
-    i_node_rules: &Ident,
+    i_node_namer: &Ident,
     parser: &Type,
 ) -> Result<TokenStream> {
     let i_nodes_iter = Ident::new("___nodes_iter", Span::call_site());
-    let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
     let name_enum = quote!(<#parser as ::pest_consume::NodeMatcher>::NodeName);
+    let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);
 
     // Find which branch to take
     let mut conditions = Vec::new();
     let start = branch.singles_before_multiple.len();
     let end = branch.singles_after_multiple.len();
     conditions.push(quote!(
-        #start + #end <= #i_node_rules.len()
+        #start + #end <= #i_nodes.len()
     ));
     let matches_rule = |rule: &Option<_>, x| match rule {
-        Some(rule_name) => quote!(#x == #name_enum::#rule_name),
+        Some(rule_name) => {
+            quote!(#node_namer_ty::node_name(&#i_node_namer, &#x) == #name_enum::#rule_name)
+        }
         None => quote!(true),
     };
     for (i, (rule, _)) in branch.singles_before_multiple.iter().enumerate() {
-        conditions.push(matches_rule(rule, quote!(#i_node_rules[#i])))
+        conditions.push(matches_rule(rule, quote!(#i_nodes[#i])))
     }
     for (i, (rule, _)) in branch.singles_after_multiple.iter().enumerate() {
-        conditions.push(matches_rule(
-            rule,
-            quote!(#i_node_rules[#i_node_rules.len()-1 - #i]),
-        ))
+        conditions
+            .push(matches_rule(rule, quote!(#i_nodes[#i_nodes.len()-1 - #i])))
     }
     if let Some((rule, _)) = &branch.multiple {
         // Hygiene looks dodgy for the `r`, but it works.
@@ -199,13 +199,13 @@ fn make_branch(
                 let all_match = |slice: &[_]| {
                     slice.iter().all(|r| #matches_r)
                 };
-                all_match(&#i_node_rules[#start..#i_node_rules.len() - #end])
+                all_match(&#i_nodes[#start..#i_nodes.len() - #end])
             }
         ))
     } else {
         // No variable-length pattern, so the size must be exactly the number of patterns
         conditions.push(quote!(
-            #start + #end == #i_node_rules.len()
+            #start + #end == #i_nodes.len()
         ))
     }
 
@@ -248,7 +248,7 @@ fn make_branch(
     Ok(quote!(
         _ if #(#conditions &&)* true => {
             #[allow(unused_mut)]
-            let mut #i_nodes_iter = #node_list_ty::iter_nodes(#i_nodes);
+            let mut #i_nodes_iter = #i_nodes.into_iter();
             #(#parses)*
             #body
         }
@@ -262,28 +262,35 @@ pub fn match_nodes(
 
     let i_nodes = Ident::new("___nodes", input.input_expr.span());
     let i_node_rules = Ident::new("___node_rules", Span::call_site());
+    let i_node_namer = Ident::new("___node_namer", Span::call_site());
 
     let input_expr = &input.input_expr;
     let parser = &input.parser;
     let branches = input
         .branches
         .iter()
-        .map(|br| make_branch(br, &i_nodes, &i_node_rules, parser))
+        .map(|br| make_branch(br, &i_nodes, &i_node_namer, parser))
         .collect::<Result<Vec<_>>>()?;
 
     let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
+    let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);
     Ok(quote!({
-        let mut #i_nodes = #input_expr;
-        let #i_node_rules: ::std::vec::Vec<_> = #node_list_ty::node_names(&#i_nodes);
+        let (#i_nodes, #i_node_namer) = #node_list_ty::consume(#input_expr);
 
         #[allow(unreachable_code, clippy::int_plus_one)]
         match () {
             #(#branches,)*
-            _ => return ::std::result::Result::Err(
-                #node_list_ty::error(&#i_nodes,
-                    format!("Nodes didn't match any pattern: {:?}", #i_node_rules)
-                )
-            ),
+            _ => {
+                // Collect the rule names to display.
+                let #i_node_rules: ::std::vec::Vec<_> =
+                        #i_nodes.iter().map(|n| #node_namer_ty::node_name(&#i_node_namer, n)).collect();
+                return ::std::result::Result::Err(
+                    #node_namer_ty::error(
+                        #i_node_namer,
+                        format!("Nodes didn't match any pattern: {:?}", #i_node_rules)
+                    )
+                );
+            }
         }
     }))
 }
