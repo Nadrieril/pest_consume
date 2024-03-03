@@ -86,6 +86,18 @@
 /// middle: `[rule(many1).., rule(x), other_rule(many2)..]` will always fail because `many1` will
 /// have consumed all the `rule` nodes.
 ///
+/// # Or-patterns
+///
+/// `match_nodes` supports a simple form of or-patterns:
+///
+/// ```ignore
+/// match_nodes!(input.into_children();
+///     [number(x), boolean(b)] | [boolean(b), number(x)] => { ... },
+/// )
+/// ```
+///
+/// This is implemented by simply duplicating the branch body.
+///
 /// # Notes
 ///
 /// The macro assumes that it is used within a consumer method, and uses `Self::$method(...)` to

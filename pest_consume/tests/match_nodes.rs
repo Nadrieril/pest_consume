@@ -276,3 +276,14 @@ fn multi_multi_tag() {
         Ok((3, 4))
     );
 }
+
+#[test]
+fn or_pattern() {
+    let or_pattern = |input: Vec<NodeKind>| {
+        Ok(match_nodes!(<TestMatcher>; notag(input);
+            [number(x), boolean(b)] | [boolean(b), number(x)] => (x, b),
+        ))
+    };
+    assert_eq!(or_pattern(vec![number(42), boolean(true)]), Ok((42, true)));
+    assert_eq!(or_pattern(vec![boolean(true), number(42)]), Ok((42, true)));
+}

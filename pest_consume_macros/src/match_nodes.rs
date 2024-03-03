@@ -14,8 +14,12 @@ struct Pattern {
     multiple: bool,
 }
 
-struct MatchBranch {
+struct Alternative {
     patterns: Punctuated<Pattern, Token![,]>,
+}
+
+struct MatchBranch {
+    alternatives: Punctuated<Alternative, Token![|]>,
     body: Expr,
 }
 
@@ -50,14 +54,20 @@ impl Parse for MacroInput {
 
 impl Parse for MatchBranch {
     fn parse(input: ParseStream) -> Result<Self> {
-        let contents;
-        let _: token::Bracket = bracketed!(contents in input);
-
-        let patterns = Punctuated::parse_terminated(&contents)?;
+        let alternatives = Punctuated::parse_separated_nonempty(&input)?;
         let _: Token![=>] = input.parse()?;
         let body = input.parse()?;
 
-        Ok(MatchBranch { patterns, body })
+        Ok(MatchBranch { alternatives, body })
+    }
+}
+
+impl Parse for Alternative {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let contents;
+        let _: token::Bracket = bracketed!(contents in input);
+        let patterns = Punctuated::parse_terminated(&contents)?;
+        Ok(Alternative { patterns })
     }
 }
 
@@ -156,8 +166,9 @@ fn traverse_pattern(
     )
 }
 
-fn make_branch(
-    branch: MatchBranch,
+fn make_alternative(
+    alternative: Alternative,
+    body: &Expr,
     i_nodes: &Ident,
     i_node_namer: &Ident,
     parser: &Type,
@@ -165,7 +176,7 @@ fn make_branch(
     let i_nodes_iter = Ident::new("___nodes_iter", Span::call_site());
     let name_enum = quote!(<#parser as ::pest_consume::NodeMatcher>::NodeName);
     let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);
-    let patterns: Vec<_> = branch.patterns.into_iter().collect();
+    let patterns: Vec<_> = alternative.patterns.into_iter().collect();
 
     let matches_pat = |pat: &Pattern, x| {
         let rule_cond = match &pat.rule_name {
@@ -236,7 +247,6 @@ fn make_branch(
         quote!(unreachable!()),
     );
 
-    let body = &branch.body;
     quote!(
         _ if {
             let check_condition = |slice: &[_]| -> bool {
@@ -267,7 +277,14 @@ pub fn match_nodes(
     let branches = input
         .branches
         .into_iter()
-        .map(|br| make_branch(br, &i_nodes, &i_node_namer, parser))
+        .flat_map(|br| {
+            let body = br.body;
+            let i_nodes = &i_nodes;
+            let i_node_namer = &i_node_namer;
+            br.alternatives.into_iter().map(move |alt| {
+                make_alternative(alt, &body, i_nodes, i_node_namer, parser)
+            })
+        })
         .collect::<Vec<_>>();
 
     let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
