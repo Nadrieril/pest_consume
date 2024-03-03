@@ -4,8 +4,7 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    bracketed, parenthesized, parse_quote, token, Error, Expr, Ident, Pat,
-    Token, Type,
+    bracketed, parenthesized, parse_quote, token, Expr, Ident, Pat, Token, Type,
 };
 
 #[derive(Clone)]
@@ -17,24 +16,14 @@ struct MatchBranchPattern {
 
 #[derive(Clone)]
 struct MatchBranch {
-    // Patterns all have the form [a, b, c.., d], with a bunch of simple patterns,
-    // optionally a multiple pattern, and then some more simple patterns.
-    singles_before_multiple: Vec<MatchBranchPattern>,
-    multiple: Option<MatchBranchPattern>,
-    singles_after_multiple: Vec<MatchBranchPattern>,
-
+    patterns: Vec<MatchBranchPatternItem>,
     body: Expr,
 }
 
 #[derive(Clone)]
 enum MatchBranchPatternItem {
-    Single {
-        pat: MatchBranchPattern,
-    },
-    Multiple {
-        pat: MatchBranchPattern,
-        slice_token: Token![..],
-    },
+    Single { pat: MatchBranchPattern },
+    Multiple { pat: MatchBranchPattern },
 }
 
 #[derive(Clone)]
@@ -49,41 +38,13 @@ impl Parse for MatchBranch {
         let contents;
         let _: token::Bracket = bracketed!(contents in input);
 
-        let pattern: Punctuated<MatchBranchPatternItem, Token![,]> =
+        let patterns: Punctuated<MatchBranchPatternItem, Token![,]> =
             Punctuated::parse_terminated(&contents)?;
-        use MatchBranchPatternItem::{Multiple, Single};
-        let mut singles_before_multiple = Vec::new();
-        let mut multiple = None;
-        let mut singles_after_multiple = Vec::new();
-        for item in pattern.clone() {
-            match item {
-                Single { pat } => {
-                    if multiple.is_none() {
-                        singles_before_multiple.push(pat)
-                    } else {
-                        singles_after_multiple.push(pat)
-                    }
-                }
-                Multiple { pat, slice_token } => {
-                    if multiple.is_none() {
-                        multiple = Some(pat)
-                    } else {
-                        return Err(Error::new(
-                            slice_token.span(),
-                            "multiple variable-length patterns are not allowed",
-                        ));
-                    }
-                }
-            }
-        }
-
         let _: Token![=>] = input.parse()?;
         let body = input.parse()?;
 
         Ok(MatchBranch {
-            singles_before_multiple,
-            multiple,
-            singles_after_multiple,
+            patterns: patterns.into_iter().collect(),
             body,
         })
     }
@@ -109,14 +70,13 @@ impl Parse for MatchBranchPatternItem {
             parenthesized!(contents in input);
             if input.peek(Token![..]) {
                 let binder = contents.parse()?;
-                let slice_token = input.parse()?;
+                let _: Token![..] = input.parse()?;
                 Ok(MatchBranchPatternItem::Multiple {
                     pat: MatchBranchPattern {
                         tag,
                         rule_name: Some(rule_name),
                         binder,
                     },
-                    slice_token,
                 })
             } else if input.is_empty() || input.peek(Token![,]) {
                 let binder = contents.parse()?;
@@ -134,14 +94,13 @@ impl Parse for MatchBranchPatternItem {
             // A single pattern captures the node itself without parsing anything.
             let binder = input.parse()?;
             if input.peek(Token![..]) {
-                let slice_token = input.parse()?;
+                let _: Token![..] = input.parse()?;
                 Ok(MatchBranchPatternItem::Multiple {
                     pat: MatchBranchPattern {
                         tag,
                         rule_name: None,
                         binder,
                     },
-                    slice_token,
                 })
             } else if input.is_empty() || input.peek(Token![,]) {
                 Ok(MatchBranchPatternItem::Single {
@@ -181,23 +140,74 @@ impl Parse for MacroInput {
     }
 }
 
+/// Takes the ident of a mutable slice. Generates code that matches on the pattern and calls
+/// `process_item` for each item. Calls `error` if we can't proceed.
+fn traverse_pattern(
+    branch: &MatchBranch,
+    i_slice: &Ident,
+    matches_pat: impl Fn(&MatchBranchPattern, TokenStream) -> TokenStream,
+    process_item: impl Fn(&MatchBranchPatternItem, TokenStream) -> TokenStream,
+    error: TokenStream,
+) -> TokenStream {
+    use MatchBranchPatternItem::*;
+    let mut steps = Vec::new();
+    let mut patterns = branch.patterns.as_slice();
+
+    // We will match variable patterns greedily. In order for trailing single patterns like `[x..,
+    // y, z]` to work, we must handle them first.
+    while matches!(patterns, [.., Single { .. }]) {
+        let [remaining_pats @ .., item] = patterns else {
+            unreachable!()
+        };
+        patterns = remaining_pats;
+        let this_node = process_item(item, quote!(node));
+        steps.push(quote!(
+            let [rest @ .., node] = #i_slice else { #error };
+            #this_node;
+            #i_slice = rest;
+        ));
+    }
+
+    for item in patterns {
+        match item {
+            Single { .. } => {
+                let this_node = process_item(item, quote!(node));
+                steps.push(quote!(
+                    let [node, rest @ ..] = #i_slice else { #error };
+                    #this_node;
+                    #i_slice = rest;
+                ));
+            }
+            item @ Multiple { pat, .. } => {
+                // Match greedily: take nodes as long as they match.
+                let matches_node = matches_pat(pat, quote!(node));
+                let this_slice = process_item(item, quote!(matched));
+                steps.push(quote!(
+                    let count_matching = #i_slice.iter().take_while(|node| #matches_node).count();
+                    let (matched, rest) = #i_slice.split_at(count_matching);
+                    #this_slice;
+                    #i_slice = rest;
+                ))
+            }
+        }
+    }
+
+    quote!(
+        #(#steps)*
+    )
+}
+
 fn make_branch(
     branch: &MatchBranch,
     i_nodes: &Ident,
     i_node_namer: &Ident,
     parser: &Type,
-) -> Result<TokenStream> {
-    let i_nodes_iter = Ident::new("___nodes_iter", Span::call_site());
+) -> TokenStream {
+    use MatchBranchPatternItem::*;
+    let i_nodes_slice = Ident::new("___nodes_slice", Span::call_site());
     let name_enum = quote!(<#parser as ::pest_consume::NodeMatcher>::NodeName);
     let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);
 
-    // Find which branch to take
-    let mut conditions = Vec::new();
-    let start = branch.singles_before_multiple.len();
-    let end = branch.singles_after_multiple.len();
-    conditions.push(quote!(
-        #start + #end <= #i_nodes.len()
-    ));
     let matches_pat = |pat: &MatchBranchPattern, x| {
         let rule_cond = match &pat.rule_name {
             Some(rule_name) => {
@@ -213,80 +223,76 @@ fn make_branch(
         };
         quote!(#rule_cond && #tag_cond)
     };
-    for (i, pat) in branch.singles_before_multiple.iter().enumerate() {
-        conditions.push(matches_pat(pat, quote!(#i_nodes[#i])))
-    }
-    for (i, pat) in branch.singles_after_multiple.iter().enumerate() {
-        conditions
-            .push(matches_pat(pat, quote!(#i_nodes[#i_nodes.len()-1 - #i])))
-    }
-    if let Some(pat) = &branch.multiple {
-        // Hygiene looks dodgy for the `r`, but it works.
-        let matches_r = matches_pat(pat, quote!(*r));
-        conditions.push(quote!(
-            {
-                // We can't use .all() directly in the pattern guard; see
-                // https://github.com/rust-lang/rust/issues/59803.
-                let all_match = |slice: &[_]| {
-                    slice.iter().all(|r| #matches_r)
-                };
-                all_match(&#i_nodes[#start..#i_nodes.len() - #end])
-            }
-        ))
-    } else {
-        // No variable-length pattern, so the size must be exactly the number of patterns
-        conditions.push(quote!(
-            #start + #end == #i_nodes.len()
-        ))
-    }
 
+    // Determine if we can take this branch.
+    let process_item = |item: &_, i_matched| match item {
+        Single { pat } => {
+            let cond = matches_pat(pat, i_matched);
+            quote!(
+                if !(#cond) { return false; }
+            )
+        }
+        // The matched subslice was already selected to be matching the rules, so nothing to do.
+        Multiple { .. } => quote!(),
+    };
+    let conditions = traverse_pattern(
+        branch,
+        &i_nodes_slice,
+        matches_pat,
+        process_item,
+        quote!(return false),
+    );
+
+    // Once we have found a branch that matches, we need to parse the nodes.
     let parse_rule = |rule: &Option<_>, node| match rule {
         Some(rule_name) => quote!(#parser::#rule_name(#node)),
         None => quote!(Ok(#node)),
     };
-    // Once we have found a branch that matches, we need to parse the nodes.
-    let mut parses = Vec::new();
-    for pat in branch.singles_before_multiple.iter() {
-        let next_node = quote!(#i_nodes_iter.next().unwrap());
-        let parse = parse_rule(&pat.rule_name, next_node);
-        let binder = &pat.binder;
-        parses.push(quote!(
-            let #binder = #parse?;
-        ))
-    }
-    // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
-    // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
-    for pat in branch.singles_after_multiple.iter().rev() {
-        let next_node = quote!(#i_nodes_iter.next_back().unwrap());
-        let parse = parse_rule(&pat.rule_name, next_node);
-        let binder = &pat.binder;
-        parses.push(quote!(
-            let #binder = #parse?;
-        ))
-    }
-    // Once we've taken nodes from the front and back, what remains are the nodes matched by the
-    // `..` pattern.
-    if let Some(pat) = &branch.multiple {
-        // Hygiene looks dodgy for `n`, but it works.
-        let parse_n = parse_rule(&pat.rule_name, quote!(n));
-        let binder = &pat.binder;
-        parses.push(quote!(
-            let #binder = #i_nodes_iter
-                .map(|n| #parse_n)
-                .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
-                .into_iter();
-        ))
-    }
+    let process_item = |item: &_, i_matched| match item {
+        Single { pat } => {
+            let parse = parse_rule(&pat.rule_name, quote!(#i_matched.clone()));
+            let binder = &pat.binder;
+            quote!(
+                let #binder = #parse?;
+            )
+        }
+        Multiple { pat, .. } => {
+            let parse_node = parse_rule(&pat.rule_name, quote!(node));
+            let binder = &pat.binder;
+            quote!(
+                let #binder = #i_matched
+                    .iter()
+                    .cloned()
+                    .map(|node| #parse_node)
+                    .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
+                    .into_iter();
+            )
+        }
+    };
+    let parses = traverse_pattern(
+        branch,
+        &i_nodes_slice,
+        matches_pat,
+        process_item,
+        quote!(unreachable!()),
+    );
 
     let body = &branch.body;
-    Ok(quote!(
-        _ if #(#conditions &&)* true => {
+    quote!(
+        _ if {
             #[allow(unused_mut)]
-            let mut #i_nodes_iter = #i_nodes.into_iter();
-            #(#parses)*
+            let check_condition = |mut #i_nodes_slice: &[_]| -> bool {
+                #conditions
+                #i_nodes_slice.is_empty()
+            };
+            check_condition(#i_nodes.as_slice())
+        } => {
+            #[allow(unused_mut)]
+            let mut #i_nodes_slice = #i_nodes.as_slice();
+            #parses
             #body
         }
-    ))
+    )
 }
 
 pub fn match_nodes(
@@ -304,7 +310,7 @@ pub fn match_nodes(
         .branches
         .iter()
         .map(|br| make_branch(br, &i_nodes, &i_node_namer, parser))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Vec<_>>();
 
     let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
     let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);

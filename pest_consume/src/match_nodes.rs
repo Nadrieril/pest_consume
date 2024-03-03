@@ -102,7 +102,7 @@ pub trait NodeList<M: NodeMatcher> {
 /// Sibling trait to `NodeList`. The separate trait is needed so we can guide inference in macros
 /// (where we can't write the type name).
 pub trait NodeNamer<M: NodeMatcher> {
-    type Node;
+    type Node: Clone;
     /// The type of errors.
     type Error;
 
