@@ -10,6 +10,7 @@ use syn::{
 
 #[derive(Clone)]
 struct MatchBranchPattern {
+    tag: Option<String>,
     rule_name: Option<Ident>,
     binder: Pat,
 }
@@ -90,6 +91,15 @@ impl Parse for MatchBranch {
 
 impl Parse for MatchBranchPatternItem {
     fn parse(input: ParseStream) -> Result<Self> {
+        let mut tag = None;
+        let ahead = input.fork();
+        let _: TokenTree = ahead.parse()?;
+        if ahead.peek(token::Pound) {
+            let tag_ident: Ident = input.parse()?;
+            tag = Some(tag_ident.to_string());
+            let _: token::Pound = input.parse()?;
+        }
+
         let ahead = input.fork();
         let _: TokenTree = ahead.parse()?;
         if ahead.peek(token::Paren) {
@@ -102,6 +112,7 @@ impl Parse for MatchBranchPatternItem {
                 let slice_token = input.parse()?;
                 Ok(MatchBranchPatternItem::Multiple {
                     pat: MatchBranchPattern {
+                        tag,
                         rule_name: Some(rule_name),
                         binder,
                     },
@@ -111,6 +122,7 @@ impl Parse for MatchBranchPatternItem {
                 let binder = contents.parse()?;
                 Ok(MatchBranchPatternItem::Single {
                     pat: MatchBranchPattern {
+                        tag,
                         rule_name: Some(rule_name),
                         binder,
                     },
@@ -125,6 +137,7 @@ impl Parse for MatchBranchPatternItem {
                 let slice_token = input.parse()?;
                 Ok(MatchBranchPatternItem::Multiple {
                     pat: MatchBranchPattern {
+                        tag,
                         rule_name: None,
                         binder,
                     },
@@ -133,6 +146,7 @@ impl Parse for MatchBranchPatternItem {
             } else if input.is_empty() || input.peek(Token![,]) {
                 Ok(MatchBranchPatternItem::Single {
                     pat: MatchBranchPattern {
+                        tag,
                         rule_name: None,
                         binder,
                     },
@@ -184,11 +198,20 @@ fn make_branch(
     conditions.push(quote!(
         #start + #end <= #i_nodes.len()
     ));
-    let matches_pat = |pat: &MatchBranchPattern, x| match &pat.rule_name {
-        Some(rule_name) => {
-            quote!(#node_namer_ty::node_name(&#i_node_namer, &#x) == #name_enum::#rule_name)
-        }
-        None => quote!(true),
+    let matches_pat = |pat: &MatchBranchPattern, x| {
+        let rule_cond = match &pat.rule_name {
+            Some(rule_name) => {
+                quote!(#node_namer_ty::node_name(&#i_node_namer, &#x) == #name_enum::#rule_name)
+            }
+            None => quote!(true),
+        };
+        let tag_cond = match &pat.tag {
+            Some(tag) => {
+                quote!(#node_namer_ty::tag(&#i_node_namer, &#x) == Some(#tag))
+            }
+            None => quote!(true),
+        };
+        quote!(#rule_cond && #tag_cond)
     };
     for (i, pat) in branch.singles_before_multiple.iter().enumerate() {
         conditions.push(matches_pat(pat, quote!(#i_nodes[#i])))

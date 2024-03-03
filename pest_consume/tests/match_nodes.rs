@@ -4,12 +4,14 @@
 use pest_consume::match_nodes;
 
 // Define a simple matcher based on an enum. Each variant of the enum gives a node name, and the
-// corresponding matcher function extracts the contained value.
+// corresponding matcher function extracts the contained value. The contructed node type stores the
+// enum variant and an optional tag.
 macro_rules! simple_matcher {
     (
         #[matcher=$matcher:ident]
+        #[node=$node:ident]
         #[names=$name:ident]
-        enum $node:ident { $($variant:ident($ty:ty),)* }
+        enum $kind:ident { $($variant:ident($ty:ty),)* }
     ) => {
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
         enum $name {
@@ -17,15 +19,39 @@ macro_rules! simple_matcher {
         }
 
         #[derive(Debug, PartialEq, Eq)]
-        enum $node {
+        enum $kind {
             $($variant($ty),)*
+        }
+
+        #[derive(Debug, PartialEq, Eq)]
+        struct $node {
+            kind: $kind,
+            tag: Option<String>,
+        }
+
+        impl $kind {
+            fn no_tag(self) -> $node {
+                $node { kind: self, tag: None }
+            }
+            fn with_tag(self, tag: impl ToString) -> $node {
+                $node { kind: self, tag: Some(tag.to_string()) }
+            }
+            fn name(&self) -> $name {
+                match self {
+                    $($kind::$variant(_) => $name::$variant,)*
+                }
+            }
         }
 
         impl $node {
             fn name(&self) -> $name {
-                match self {
-                    $($node::$variant(_) => $name::$variant,)*
-                }
+                self.kind.name()
+            }
+        }
+
+        impl From<$kind> for $node {
+            fn from(kind: $kind) -> $node {
+                kind.no_tag()
             }
         }
 
@@ -38,8 +64,8 @@ macro_rules! simple_matcher {
         impl $matcher {
             $(
                 fn $variant(n: $node) -> Result<$ty, ()> {
-                    match n {
-                        $node::$variant(x) => Ok(x),
+                    match n.kind {
+                        $kind::$variant(x) => Ok(x),
                         _ => Err(()),
                     }
                 }
@@ -64,6 +90,9 @@ macro_rules! simple_matcher {
             fn node_name(&self, n: &Self::Node) -> $name {
                 n.name()
             }
+            fn tag<'a>(&self, n: &'a Self::Node) -> Option<&'a str>{
+                n.tag.as_deref()
+            }
             fn error(self, _message: String) -> Self::Error {
                 ()
             }
@@ -71,21 +100,26 @@ macro_rules! simple_matcher {
     };
 }
 
-use Node::*;
+use NodeKind::*;
 simple_matcher! {
     #[matcher=TestMatcher]
+    #[node=Node]
     #[names=NodeName]
-    enum Node {
+    enum NodeKind {
         boolean(bool),
         string(String),
         number(u32),
     }
 }
 
+fn notag(input: Vec<NodeKind>) -> Vec<Node> {
+    input.into_iter().map(|kind| kind.no_tag()).collect()
+}
+
 #[test]
 fn single_number() {
-    let single_number = |input: Vec<Node>| {
-        Ok(match_nodes!(<TestMatcher>; input;
+    let single_number = |input: Vec<NodeKind>| {
+        Ok(match_nodes!(<TestMatcher>; notag(input);
             [number(x)] => x,
         ))
     };
@@ -97,8 +131,8 @@ fn single_number() {
 
 #[test]
 fn multi_number() {
-    let multi_number = |input: Vec<Node>| {
-        Ok(match_nodes!(<TestMatcher>; input;
+    let multi_number = |input: Vec<NodeKind>| {
+        Ok(match_nodes!(<TestMatcher>; notag(input);
             [number(x)..] => x.collect::<Vec<_>>(),
         ))
     };
@@ -109,8 +143,8 @@ fn multi_number() {
 
 #[test]
 fn multi_number_skip() {
-    let multi_number_skip = |input: Vec<Node>| {
-        Ok(match_nodes!(<TestMatcher>; input;
+    let multi_number_skip = |input: Vec<NodeKind>| {
+        Ok(match_nodes!(<TestMatcher>; notag(input);
             [_, number(x).., _] => x.collect::<Vec<_>>(),
         ))
     };
@@ -133,8 +167,8 @@ fn multi_number_skip() {
 
 #[test]
 fn multi_skip() {
-    let multi_skip = |input: Vec<Node>| {
-        Ok(match_nodes!(<TestMatcher>; input;
+    let multi_skip = |input: Vec<NodeKind>| {
+        Ok(match_nodes!(<TestMatcher>; notag(input);
             [_, x.., _] => x.collect::<Vec<Node>>(),
         ))
     };
@@ -142,10 +176,43 @@ fn multi_skip() {
     assert_eq!(multi_skip(vec![number(0), number(0)]), Ok(vec![]));
     assert_eq!(
         multi_skip(vec![number(0), number(41), number(42), number(0)]),
-        Ok(vec![number(41), number(42)])
+        Ok(notag(vec![number(41), number(42)]))
     );
     assert_eq!(
         multi_skip(vec![boolean(true), number(41), number(42), boolean(false)]),
-        Ok(vec![number(41), number(42)])
+        Ok(notag(vec![number(41), number(42)]))
+    );
+}
+
+#[test]
+fn single_tag() {
+    let single_tag = |input: Vec<Node>| {
+        Ok(match_nodes!(<TestMatcher>; input;
+            [tag1 # number(x)] => x,
+        ))
+    };
+    assert!(single_tag(vec![]).is_err());
+    assert!(single_tag(vec![number(0).no_tag()]).is_err());
+    assert!(single_tag(vec![number(0).with_tag("tag2")]).is_err());
+    assert_eq!(single_tag(vec![number(0).with_tag("tag1")]), Ok(0));
+}
+
+#[test]
+fn multi_tag() {
+    let multi_tag = |input: Vec<Node>| {
+        Ok(match_nodes!(<TestMatcher>; input;
+            [tag1 # x.., tag2 # _] => x.collect::<Vec<_>>(),
+        ))
+    };
+    assert!(multi_tag(vec![number(0).with_tag("tag2")]).is_ok());
+    assert_eq!(
+        multi_tag(vec![
+            number(0).with_tag("tag1"),
+            number(0).with_tag("tag1"),
+            number(0).with_tag("tag2"),
+        ])
+        .unwrap()
+        .len(),
+        2
     );
 }
