@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gallery</title>
+    <link rel="stylesheet" href="Header.css">
+    <link rel="stylesheet" href="Gallery.css">
+    <link rel="stylesheet" href="footer.css">
+    
+  <script src="https://kit.fontawesome.com/383c7569cf.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar">
+            <!-- <a class="logo" href="#">Coffee<span>.</span></a> -->
+            <img src="KOTARYA-removebg-preview.png" alt="" class="logo">
+            <ul class="menu-links">
+                <span id="close-menu-btn" class="material-symbols-outlined"><i class="fa-solid fa-xmark"></i></span>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="Services.html">Services</a></li>
+                <li><a href="Gallery.html">Gallery</a></li>
+                <li><a href="About.html">About us</a></li>
+                <li><a href="Contact.html">Contact us</a></li>
+            </ul>
+            <span id="hamburger-btn" class="material-symbols-outlined"><i class="fa-solid fa-bars"></i></span>
+        </nav>
+    </header>
+
+    <div class="Gallery">
+        <h1>Kotarya Pest Controll Gallery</h1>
+        <div class="container">
+            <img src="Assetss/s1.png" alt="" class="photo">
+            <img src="Assetss/s2.png" alt="" class="photo">
+            <img src="Assetss/s3.png" alt="" class="photo">
+            <img src="Assetss/s4.png" alt="" class="photo">
+            <img src="Assetss/s5.png" alt="" class="photo">
+            <img src="Assetss/s6.png" alt="" class="photo">
+            <img src="Assetss/s7.png" alt="" class="photo">
+        </div>
+
+    </div>
+
+
+
+    <!--================ start footer Area  =================-->
+  <section class="footer">
+    <div class="row">
+      <div class="col">
+        <img src="KOTARYA-removebg-preview.png" alt="" class="logo">
+        <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Autem impedit consequuntur, sint quisquam nemo
+          perferendis provident mollitia inventore vero nam?</p>
+      </div>
+      <div class="col">
+        <h3>Office <div class="underline"> <span></span></div>
+        </h3>
+        <p>Shop No. 06, Saipooja CHS, Sector-05 Kharghar Nvi Mumbai Maharashtra- 410210</p>
+        <!-- <p>whitefield Bnaglore</p>
+        <p>Karnatka, PIN 462003, India</p> -->
+        <p class="email-id">kotaryapest@gmail.com</p>
+        <h4>+91 -9999999999</h4>
+      </div>
+      <div class="col">
+        <h3 >Links <div class="underline"> <span></span></div>
+        </h3>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="About.html">About</a></li>
+          <li><a href="Services.html">Services</a></li>
+          <li><a href="Gallery.html">Gallery</a></li>
+          <li><a href="Contact.html">Contact</a></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Newsletter <div class="underline"> <span></span></div>
+        </h3>
+        <form action="">
+          <i class="fa-regular fa-envelope"></i>
+          <input type="email" placeholder="Enter your email id">
+          <button type="submit"> <i class="fas fa-arrow-right"></i></button>
+        </form>
+        <div class="social-icon">
+          <i class="fa-brands fa-facebook-f"></i>
+          <i class="fa-brands fa-whatsapp"></i>
+          <i class="fa-brands fa-twitter"></i>
+          <i class="fa-brands fa-instagram"></i>
+        </div>
+      </div>
+    </div>
+    <hr>
+    <p class="copyright">copyright &copy;
+      <script>document.write(new Date().getFullYear());</script> all right reserved
+    </p>
+  </section>
+
+    <script>
+        const header = document.querySelector("header");
+        const hamburgerBtn = document.querySelector("#hamburger-btn");
+        const closeMenuBtn = document.querySelector("#close-menu-btn");
+    
+        // Toggle mobile menu on hamburger button click
+        hamburgerBtn.addEventListener("click", () => header.classList.toggle("show-mobile-menu"));
+    
+        // Close mobile menu on close button click
+        closeMenuBtn.addEventListener("click", () => hamburgerBtn.click());
+      </script>
+</body>
+</html>
